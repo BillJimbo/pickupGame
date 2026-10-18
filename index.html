@@ -261,6 +261,10 @@ body.on-title #stats,body.on-title #dash,body.on-title #pedals,body.on-title #lo
 .set-chips{display:flex;gap:6px;flex-wrap:wrap}
 .set-chips button{margin:0;padding:5px 10px;background:transparent;color:var(--dim);border:1px solid var(--line);font-size:12px}
 .set-chips button.on{border-color:var(--accent);color:var(--accent)}
+.set-binds{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:2px 18px;padding:6px 0 4px}
+.set-bind{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;font-size:12.5px}
+.set-bind button{margin:0;padding:4px 10px;min-width:104px;background:transparent;color:inherit;border:1px solid var(--line);font-size:12px}
+.set-bind button.on{border-color:var(--accent);color:var(--accent)}
 .set-row input[type=range]{accent-color:var(--accent);width:180px}
 .fs-btn:hover{color:var(--ink);border-color:var(--accent)}
 #title h1{font:700 40px/1.05 "Barlow Condensed",Impact,sans-serif;margin:6px 0 14px;letter-spacing:.02em}
@@ -399,6 +403,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 <div id="title">
   <div class="title-ui">
     <div class="title-btns"><button type="button" id="setBtn" class="fs-btn">Settings</button><button type="button" id="fsBtn" class="fs-btn">Full screen (F)</button><button type="button" id="dlBtn" class="fs-btn" style="display:none">Download the game</button></div>
+    <input type="file" id="saveFile" accept=".json,application/json" hidden>
     <div class="lbl">Pickup Trial</div>
     <h1>Where to?</h1>
     <div class="modes">
@@ -7450,7 +7455,7 @@ document.addEventListener('fullscreenchange', () => {
   $('fsBtn').textContent = document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)';
 });
 $('fsBtn').addEventListener('click', toggleFullscreen);
-if (FS_BLOCKED) { $('fsBtn').textContent = 'Play full screen (new tab)'; $('fsBtn').title = 'Full screen is blocked where this game is embedded: this opens it on its own page, where F works. Progress saved here does not carry over.'; }
+if (FS_BLOCKED) { $('fsBtn').textContent = 'Play full screen (new tab)'; $('fsBtn').title = 'Full screen is blocked where this game is embedded: this opens it on its own page, where F works. Progress saved here does not carry over by itself: use Settings, Export save, then Import save there.'; }
 /* ---------- the Settings menu ---------- */
 // Each row is a label and a few choice chips (data-set="key:value"); the volume is a slider. Changes apply at once
 // and are saved. The cockpit row sets two settings: 3D or 2D, and how detailed the 3D cab is.
@@ -7475,6 +7480,82 @@ function settingValue(key) {
   if (key === 'sway' || key === 'music' || key === 'tips') return SETTINGS[key] ? 'on' : 'off';
   return SETTINGS[key];
 }
+// Controls: every action's key can be changed in Settings (SETTINGS.binds, action -> key code). The game itself still
+// reads the default keys: each press is translated (keyMap) from the key you chose to the default one it stands for, and
+// a default key whose action has moved is switched off. The arrow keys, C (clutch) and Enter (start) stay as extras;
+// Esc, the backtick and Backspace are fixed
+const ACTIONS = [['throttle', 'Throttle', 'KeyW'], ['brake', 'Brake / rein back', 'KeyS'], ['left', 'Steer left', 'KeyA'], ['right', 'Steer right', 'KeyD'],
+  ['clutch', 'Clutch', 'ShiftLeft'], ['crank', 'Start / stop the engine', 'KeyI'], ['ebrake', 'E-brake / handbrake', 'Space'],
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map(n => ['g' + n, 'Gear ' + n, 'Digit' + n]), ['rev', 'Reverse', 'KeyR'], ['neutral', 'Neutral', 'KeyN'],
+  ['x', 'Nitrous / thrusters / assist motor', 'KeyX'], ['h', 'Hop / regen mode', 'KeyH'], ['holdThr', 'Hold the throttle', 'KeyK'], ['holdClu', 'Hold the clutch', 'KeyJ'],
+  ['view', 'Cockpit / chase camera', 'KeyV'], ['units', 'mph / km/h', 'KeyM'], ['fs', 'Full screen', 'KeyF']];
+const FIXED_KEYS = ['Escape', 'Backquote', 'Backspace', 'Enter', 'Tab', 'MetaLeft', 'MetaRight'];
+let KEYMAP = null, SET_CAPTURE = null;
+const bindOf = id => (SETTINGS.binds || {})[id] || ACTIONS.find(a => a[0] === id)[2];
+function buildKeyMap() {
+  const m = {}, b = SETTINGS.binds || {};
+  for (const [id, , def] of ACTIONS) if (b[id] && b[id] !== def) m[b[id]] = def;
+  for (const [id, , def] of ACTIONS) if (b[id] && b[id] !== def && !(def in m)) m[def] = 'Unbound';
+  KEYMAP = m;
+}
+const keyMap = code => { if (!KEYMAP) buildKeyMap(); return code in KEYMAP ? KEYMAP[code] : code; };
+const keyName = c => ({Space: 'Space', ShiftLeft: 'Left Shift', ShiftRight: 'Right Shift', ControlLeft: 'Left Ctrl', ControlRight: 'Right Ctrl', AltLeft: 'Left Alt',
+  AltRight: 'Right Alt', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', CapsLock: 'Caps Lock', Comma: ',', Period: '.', Slash: '/', Semicolon: ';',
+  Quote: "'", BracketLeft: '[', BracketRight: ']', Minus: '-', Equal: '=', Backslash: '\\'})[c] || c.replace(/^Key|^Digit/, '').replace(/^Numpad/, 'Num ');
+// Binding a key: one already used by another action swaps the two
+function setBind(id, code) {
+  const b = Object.assign({}, SETTINGS.binds || {}), old = bindOf(id);
+  const other = ACTIONS.find(([o]) => o !== id && bindOf(o) === code);
+  b[id] = code; if (other) b[other[0]] = old;
+  for (const [a, , def] of ACTIONS) if (b[a] === def) delete b[a];   // back on its default: nothing to remember
+  SETTINGS.binds = b; KEYMAP = null; saveSettings();
+}
+// Offering a file to the player: on the website through its own save prompt (the "downloads" capability), elsewhere as
+// a plain download. btn (optional) says how it went
+async function offerFile(name, text, btn, done) {
+  if (window.claude && typeof window.claude.use === 'function') {
+    const dl = await window.claude.use('downloads').catch(() => null);
+    if (dl) {
+      try { await dl.save({filename: name, data: text}); if (btn) btn.textContent = done || 'Saved'; }
+      catch (e) { if (btn) btn.textContent = e && e.code === 'declined' ? 'Not saved' : 'Saving is not available here'; }
+      return;
+    }
+  }
+  const url = URL.createObjectURL(new Blob([text], {type: 'application/json'}));
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  if (btn) btn.textContent = done || 'Saved';
+}
+// Save data: everything the game keeps in this browser, as one file to keep or carry to another browser or computer
+const SAVE_KEYS = ['pt-career', 'pt-settings', 'pt-lessons', 'pt-mods', 'pt-ttfav'];
+function exportSave(btn) {
+  const keys = {};
+  for (const k of SAVE_KEYS) { try { const v = localStorage.getItem(k); if (v !== null) keys[k] = v; } catch (e) {} }
+  if (!keys['pt-settings']) keys['pt-settings'] = JSON.stringify(SETTINGS);
+  offerFile(`pickup-trial-save-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({format: 'pickup-trial-save', v: 1, date: new Date().toISOString(), keys}), btn, 'Save exported');
+}
+// Reading one back: it has to be ours, with only our keys, each a string that parses (the lesson count a number)
+let SET_IMPORT = null;   // a checked save waiting for the player to confirm
+function readSave(text) {
+  const o = JSON.parse(text);
+  if (!o || o.format !== 'pickup-trial-save' || typeof o.keys !== 'object') throw new Error('That is not a Pickup Trial save file.');
+  const keys = {};
+  for (const k of SAVE_KEYS) if (k in o.keys) {
+    const v = o.keys[k];
+    if (typeof v !== 'string' || v.length > 5e6) throw new Error('This save file is damaged.');
+    if (k === 'pt-lessons') { if (!/^\d{1,2}$/.test(v)) throw new Error('This save file is damaged.'); }
+    else JSON.parse(v);
+    keys[k] = v;
+  }
+  if (!Object.keys(keys).length) throw new Error('This save file is empty.');
+  let money = null; try { money = keys['pt-career'] ? JSON.parse(keys['pt-career']).money : null; } catch (e) {}
+  return {keys, date: typeof o.date === 'string' ? o.date.slice(0, 10) : '', money};
+}
+function importSave() {
+  try { for (const k of SAVE_KEYS) localStorage.removeItem(k); for (const [k, v] of Object.entries(SET_IMPORT.keys)) localStorage.setItem(k, v); }
+  catch (e) { SET_IMPORT = {error: 'This browser would not store the save (storage may be blocked here).'}; renderSettings(); return; }
+  location.reload();   // start afresh from the loaded save
+}
 function renderSettings() {
   $('setRows').innerHTML = SET_ROWS.map(([key, label, note, opts]) => `<div class="set-row"><span>${label}${note ? `<small>${note}</small>` : ''}</span>
     <div class="set-chips">${opts.map(([v, name]) => `<button type="button" data-set="${key}:${v}"${settingValue(key) === v ? ' class="on"' : ''}>${name}</button>`).join('')}</div></div>`).join('') +
@@ -7487,7 +7568,20 @@ function renderSettings() {
     (SET_RESET ? `<div class="set-row"><span style="color:#e2552f">Start over? Your money, cars, parts, race results and unlocks will all be gone, and the intro plays again.</span>
         <div class="set-chips"><button type="button" data-reset="yes" style="background:#b8231f;color:#fff">Yes, start over</button><button type="button" data-reset="no">Cancel</button></div></div>`
       : `<div class="set-row"><span>New career<small>Wipe the career save and begin again with $0 and the ATC.</small></span>
-        <div class="set-chips"><button type="button" data-reset="ask">Start a new career</button></div></div>`);
+        <div class="set-chips"><button type="button" data-reset="ask">Start a new career</button></div></div>`) +
+    // Save data: export to a file, import from one (asked once more before it replaces anything)
+    '<div class="lbl" style="margin-top:14px">Save data</div>' +
+    `<div class="set-row"><span>Export your save<small>Your career, lessons, settings and Test Track setups, as one file. Keep it as a backup, or import it on another browser or computer.</small></span>
+      <div class="set-chips"><button type="button" data-save="export">Export save</button></div></div>` +
+    (SET_IMPORT && SET_IMPORT.keys ? `<div class="set-row"><span style="color:#e2552f">Load this save${SET_IMPORT.date ? ' from ' + SET_IMPORT.date : ''}${SET_IMPORT.money !== null && SET_IMPORT.money !== undefined ? ' (' + fmt$(SET_IMPORT.money) + ' in the bank)' : ''}? It replaces everything saved here, and the game restarts.</span>
+        <div class="set-chips"><button type="button" data-save="yes" style="background:#b8231f;color:#fff">Yes, load it</button><button type="button" data-save="no">Cancel</button></div></div>`
+      : `<div class="set-row"><span>Import a save${SET_IMPORT && SET_IMPORT.error ? `<small style="color:#e2552f">${SET_IMPORT.error}</small>` : '<small>Load a save file exported from this game.</small>'}</span>
+        <div class="set-chips"><button type="button" data-save="pick">Import save…</button></div></div>`) +
+    // Controls: click an action, then press its new key
+    '<div class="lbl" style="margin-top:14px">Controls</div>' +
+    '<div class="set-row"><span><small>Click an action, then press the key you want for it (Esc cancels). A key already in use swaps over. The arrow keys, C for the clutch and Enter to start still work too; Esc, ` and Backspace are fixed.</small></span>' +
+    `<div class="set-chips"><button type="button" data-bind="reset">Reset controls</button></div></div>` +
+    '<div class="set-binds">' + ACTIONS.map(([id, label, def]) => `<div class="set-bind"><span>${label}</span><button type="button" data-bind="${id}"${SET_CAPTURE === id ? ' class="on"' : ''}>${SET_CAPTURE === id ? 'Press a key…' : keyName(bindOf(id))}${bindOf(id) !== def && SET_CAPTURE !== id ? ' *' : ''}</button></div>`).join('') + '</div>';
 }
 let SET_RESET = false;
 function applySetting(key, v) {
@@ -7500,7 +7594,7 @@ function applySetting(key, v) {
   saveSettings(); renderSettings();
 }
 function openSettings() { renderSettings(); $('settings').hidden = false; }
-function closeSettings() { $('settings').hidden = true; SET_RESET = false; }
+function closeSettings() { $('settings').hidden = true; SET_RESET = false; SET_CAPTURE = null; SET_IMPORT = null; }
 $('setBtn').addEventListener('click', openSettings);
 // On the website (a claude.ai artifact) the title screen offers the whole game as one HTML file, through the site's own
 // save prompt; opened as a plain file there is nothing to offer, so the button stays hidden
@@ -7513,7 +7607,25 @@ if (window.claude && typeof window.claude.use === 'function' && SOURCE_HTML) win
   });
 }).catch(() => {});
 $('setDone').addEventListener('click', closeSettings);
+$('saveFile').addEventListener('change', e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  if (f.size > 2e7) { SET_IMPORT = {error: 'That file is too big to be a save.'}; renderSettings(); return; }
+  f.text().then(t => { SET_IMPORT = readSave(t); renderSettings(); })
+    .catch(err => { SET_IMPORT = {error: err instanceof SyntaxError ? 'That file could not be read as a save.' : err.message}; renderSettings(); });
+});
 $('settings').addEventListener('click', e => {
+  const sv = e.target.closest('[data-save]');
+  if (sv) {
+    const v = sv.dataset.save;
+    if (v === 'export') exportSave(sv);
+    else if (v === 'pick') $('saveFile').click();
+    else if (v === 'yes' && SET_IMPORT && SET_IMPORT.keys) importSave();
+    else { SET_IMPORT = null; renderSettings(); }
+    return;
+  }
+  const bd = e.target.closest('[data-bind]');
+  if (bd) { const id = bd.dataset.bind; if (id === 'reset') { SETTINGS.binds = {}; KEYMAP = null; saveSettings(); SET_CAPTURE = null; } else SET_CAPTURE = SET_CAPTURE === id ? null : id; renderSettings(); return; }
   const r = e.target.closest('[data-reset]');
   if (r) { const v = r.dataset.reset; SET_RESET = v === 'ask'; if (v === 'yes') { closeSettings(); newCareer(); } else renderSettings(); return; }
   const b = e.target.closest('[data-set]'); if (b) { const [k, v] = b.dataset.set.split(':'); applySetting(k, v); }
@@ -7528,11 +7640,19 @@ $('settings').addEventListener('input', e => {
 });
 addEventListener('keydown', e => {
   if (e.target && (e.target.tagName === 'INPUT' && e.target.type === 'text' || e.target.tagName === 'TEXTAREA')) return;   // typing a name
-  if (!$('settings').hidden) { if (e.code === 'Escape' || e.code === 'Backquote') closeSettings(); return; }
-  if (e.code === 'KeyF' && !e.repeat) { toggleFullscreen(); return; }
+  if (!$('settings').hidden) {
+    if (SET_CAPTURE) {   // choosing a key for an action
+      e.preventDefault();
+      if (e.code !== 'Escape' && !FIXED_KEYS.includes(e.code)) setBind(SET_CAPTURE, e.code);
+      SET_CAPTURE = null; renderSettings(); return;
+    }
+    if (e.code === 'Escape' || e.code === 'Backquote') closeSettings(); return;
+  }
+  const code = keyMap(e.code);   // the key the player chose, as the default key the game reads
+  if (code === 'KeyF' && !e.repeat) { toggleFullscreen(); return; }
   if (!$('title').hidden) return;   // no game keys on the title screen
   initAudio();
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code) || code !== e.code) e.preventDefault();
   // Esc, or the backtick/tilde key (for browsers where Esc leaves full screen), heads for the title. During a drive it
   // asks first and pauses; pressing it again while asked leaves. From a menu, or once the drive is over, it just goes.
   if (e.code === 'Escape' || e.code === 'Backquote' || e.key === '`' || e.key === '~') {
@@ -7546,15 +7666,15 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   // While the quit prompt is up: Backspace again quits, Enter keeps driving, nothing else reaches the car
   if (PAUSED) { if (e.code === 'Backspace') quitRace('races'); else if (e.code === 'Enter') resumeRace(); return; }
-  KEYS[e.code] = true;
-  if (e.code === 'KeyK' || e.code === 'KeyJ') {
-    const k = e.code === 'KeyK' ? 'K' : 'J';
+  KEYS[code] = true;
+  if (code === 'KeyK' || code === 'KeyJ') {
+    const k = code === 'KeyK' ? 'K' : 'J';
     HOLD_WAS[k] = (k === 'K' ? THR_HOLD : CLU_HOLD) !== null;
     HOLD_T0[k] = performance.now();
     if (k === 'K' && THR_HOLD === null) THR_HOLD = S.thr;
     if (k === 'J' && CLU_HOLD === null) CLU_HOLD = S.clutch;
   }
-  switch (e.code) {
+  switch (code) {
     case 'KeyI': case 'Enter': if (S.engineOn) shutOff(); else startEngine(); break;
     case 'Digit1': shift(1); break;
     case 'Digit2': shift(2); break;
@@ -7581,11 +7701,12 @@ addEventListener('keydown', e => {
   }
 });
 addEventListener('keyup', e => {
-  KEYS[e.code] = false;
-  if (e.code === 'Space' && S.handPull) { S.hand = false; S.handPull = false; }   // a handbrake turn ends when Space comes up
+  const code = keyMap(e.code);
+  KEYS[code] = false;
+  if (code === 'Space' && S.handPull) { S.hand = false; S.handPull = false; }   // a handbrake turn ends when its key comes up
   // A quick tap of K or J that started while the lock was on releases it
-  if (e.code === 'KeyK' || e.code === 'KeyJ') {
-    const k = e.code === 'KeyK' ? 'K' : 'J';
+  if (code === 'KeyK' || code === 'KeyJ') {
+    const k = code === 'KeyK' ? 'K' : 'J';
     if (HOLD_WAS[k] && performance.now() - HOLD_T0[k] < 250) { if (k === 'K') THR_HOLD = null; else CLU_HOLD = null; }
     HOLD_WAS[k] = false;
   }
