@@ -7428,18 +7428,29 @@ function reset() {
 // Full screen for the game itself (F, or the button on the title screen). In Chrome, Edge and Arc the game also takes
 // the Esc key while it is full screen (the Keyboard Lock API), so Esc reaches the game's menus instead of dropping out
 // of full screen; holding Esc down still leaves. Safari has no keyboard lock, so there the backtick/tilde key does Esc's job.
+// Embedded where full screen is not allowed (Google Sites wraps embeds in its own frame without that permission), the
+// button opens the game on its own page in a new tab instead, where full screen works. The saves there are separate
+const PLAY_URL = 'https://billjimbo.github.io/pickupGame/';
+const FS_BLOCKED = window.top !== window && !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
 function toggleFullscreen() {
+  if (FS_BLOCKED) {
+    const w = window.open(PLAY_URL, '_blank', 'noopener');
+    if (!w) log(`Full screen is blocked where this game is embedded. Open ${PLAY_URL} to play full screen.`, 'warn');
+    return;
+  }
   const el = document.documentElement;
   if (document.fullscreenElement || document.webkitFullscreenElement) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
   const req = el.requestFullscreen || el.webkitRequestFullscreen;
   if (!req) return;
-  Promise.resolve(req.call(el)).then(() => { if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(['Escape']).catch(() => {}); }).catch(() => {});
+  Promise.resolve(req.call(el)).then(() => { if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(['Escape']).catch(() => {}); })
+    .catch(() => { if (window.top !== window) { const w = window.open(PLAY_URL, '_blank', 'noopener'); if (!w) log(`Full screen is blocked where this game is embedded. Open ${PLAY_URL} to play full screen.`, 'warn'); } });   // refused in a frame: its own page instead
 }
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
   $('fsBtn').textContent = document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)';
 });
 $('fsBtn').addEventListener('click', toggleFullscreen);
+if (FS_BLOCKED) { $('fsBtn').textContent = 'Play full screen (new tab)'; $('fsBtn').title = 'Full screen is blocked where this game is embedded: this opens it on its own page, where F works. Progress saved here does not carry over.'; }
 /* ---------- the Settings menu ---------- */
 // Each row is a label and a few choice chips (data-set="key:value"); the volume is a slider. Changes apply at once
 // and are saved. The cockpit row sets two settings: 3D or 2D, and how detailed the 3D cab is.
