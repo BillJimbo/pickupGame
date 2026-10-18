@@ -339,11 +339,11 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
       <div class="row score"><span>Current lap</span><span id="crash">0.0 s</span></div>
       <div class="row"><span>Stalls</span><span id="stalls">0</span></div>
       <div class="row"><span>Gear crunches</span><span id="grinds">0</span></div>
-      <div class="row"><span>Speed units (M)</span><span id="unitSw" class="unit-sw" role="button" tabindex="0" title="Switch units (M)">mph</span></div>
+      <div class="row"><span>Speed units (<span class="k-units">M</span>)</span><span id="unitSw" class="unit-sw" role="button" tabindex="0" title="Switch units">mph</span></div>
       <div class="row score"><span>Off the road</span><span id="off">0.0 s</span></div>
       <div class="row"><span>Output</span><span id="next">120 hp</span></div>
       <div class="row" id="boostRow" style="display:none"><span>Boost</span><span id="boost">0.0 psi</span></div>
-      <div class="row" id="nosRow" style="display:none"><span>Nitrous (X)</span><span id="nosV">100%</span></div>
+      <div class="row" id="nosRow" style="display:none"><span>Nitrous (<span class="k-x">X</span>)</span><span id="nosV">100%</span></div>
       <div class="row" id="batRow" style="display:none"><span>Battery</span><span id="batV">—</span></div>
       <div class="row"><span>Engine</span><span id="eng">OFF</span></div>
       <div class="row"><span>Engine temp</span><span id="tempV">—</span></div>
@@ -428,7 +428,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
       <button type="button" data-tab="races">Races</button>
     </nav>
     <section id="crBody"></section>
-    <p class="keys" style="color:var(--dim);font-size:12px;margin-top:12px">Esc or ` goes to the home screen, F toggles full screen. Your career is saved in this browser.</p>
+    <p class="keys" style="color:var(--dim);font-size:12px;margin-top:12px">Esc or ` goes to the home screen, <span class="k-fs">F</span> toggles full screen. Your career is saved in this browser.</p>
   </div>
 </div>
 <div id="settings" hidden>
@@ -540,7 +540,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
         <button data-car="ram">Drive the Ram</button>
       </div>
     </div>
-    <p class="keys" style="color:var(--dim);font-size:12px;margin-top:12px">Esc or ` goes to the home screen at any time. F toggles full screen.</p>
+    <p class="keys" style="color:var(--dim);font-size:12px;margin-top:12px">Esc or ` goes to the home screen at any time. <span class="k-fs">F</span> toggles full screen.</p>
   </div>
 </div>
 
@@ -1108,7 +1108,7 @@ Object.assign(CARS, {
     grip: [0.88, 1.03], eyeH: 1.06, eyeHor: 0.45, paint: '#3d9a3f', gate: 'l5', frontDriveShare: 0.5, idleTq: 0.25, cgH: 0.45,
     rearAssist: {kW: 45, wheelNm: 900, kWh: 0.9},   // about a minute of full assist from a full battery
     engine: '2.0 eight valve with a chip, cam, intake and exhaust: 136 hp at 5,600 rpm, 186 Nm at 3,000 rpm, plus a 45 kW rear assist motor',
-    note: 'Her own engine, a lot of tuning, and an electric motor on the rear axle: hold X to wake it up',
+    note: 'Her own engine, a lot of tuning, and an electric motor on the rear axle: hold {k:x} to wake it up',
     blurb: 'Greta: a 2001 VW Cabrio in bright green, lowered and tuned, still on her own 2.0, with an electric motor on the rear axle for when you need it.',
     shape: {track: 0.76, tw: 0.12, axles: [-1.25, 1.22], parts: parts(
       full('p', -2.05, 1.35, 0.86, 0.26, 0.83), full('p', 1.35, 1.85, 0.86, 0.26, 0.79), full('p', 1.85, 2.09, 0.83, 0.26, 0.69),
@@ -1605,7 +1605,7 @@ Object.assign(CARS, {
     hp: 1340, hpRpm: 7000, peakTq: 1650, tqPeak: 6000, idle: 0, redline: 21500, gaugeMax: 22000, wb: 2.7, front: 0.45, cyl: 0, inertia: 6,
     grip: [1.34, 1.46], eyeH: 0.98, eyeHor: 0.43, paint: '#b3121b', cgH: 0.42, dragMul: 0.55, electric: true, idleTq: 0,
     battery: {kWh: 200, regenNm: 320}, thrusters: {N: 21000, secs: 8, hop: 6.5, hoverSecs: 6},
-    engine: 'Three electric motors: about 10,000 Nm at the wheels, a 200 kWh battery, and a compressed-air tank for the thrusters', note: 'Silent and savage. Hold X for the thrusters, H to hop. Governed at about 250 mph',
+    engine: 'Three electric motors: about 10,000 Nm at the wheels, a 200 kWh battery, and a compressed-air tank for the thrusters', note: 'Silent and savage. Hold {k:x} for the thrusters, {k:h} to hop. Governed at about 250 mph',
     blurb: "A 2026 Tesla Roadster: three motors, a removable glass roof, 0-60 in under two seconds, and cold-gas thrusters fed from an air tank that can hop it right off the road.",
     shape: {track: 0.86, tw: 0.15, axles: [-1.35, 1.38], parts: parts(
       full('p', -2.2, 1.65, 0.97, 0.26, 0.7), full('p', 1.0, 1.65, 0.96, 0.7, 0.74), nose(1.65, 2.22, 0.94, 0.26, 0.6, 0.42),
@@ -2462,10 +2462,19 @@ const BOOMS = [];
 const penalty = () => S.elapsed + S.reds * 10 + S.corners * 3 + S.crashes * 5 + S.stalls * 5 + S.grinds * 1.5 + S.offT;
 
 /* ---------- messages ---------- */
+// Hints name keys by action, as {k:action} (see ACTIONS in the Settings code): kt fills in the key the player has for it
+// now, so every hint follows the Controls settings. The clutch on its default reads "Shift" (either Shift works)
+function keyLabel(id) {
+  const code = bindOf(id), def = ACTIONS.find(a => a[0] === id)[2];
+  return id === 'clutch' && code === def ? 'Shift' : keyName(code);
+}
+function kt(str) { return typeof str === 'string' && str.indexOf('{k:') >= 0 ? str.replace(/\{k:(\w+)\}/g, (m, id) => ACTIONS.some(a => a[0] === id) ? keyLabel(id) : m) : str; }
+// The gear keys for a hint: "1–6" while they are the defaults, otherwise each one
+function gearKeys(n) { const ks = Array.from({length: n}, (_, i) => keyLabel('g' + (i + 1))); return ks.every((k, i) => k === String(i + 1)) ? `1–${n}` : ks.join(' '); }
 function log(text, cls = '') {
   if (!SETTINGS.tips && cls !== 'bad') return;   // tips turned off in Settings: only the warnings about damage and penalties
   const d = document.createElement('div');
-  d.className = cls; d.textContent = text;
+  d.className = cls; d.textContent = kt(text);
   const box = $('log');
   box.prepend(d);
   while (box.children.length > 5) box.lastChild.remove();
@@ -3203,7 +3212,7 @@ function sfx(type, amount) {
 /* ---------- engine and drivetrain ---------- */
 function stall() {
   S.engineOn = false; S.rpm = 0; S.stalls++;
-  log('Stalled. Clutch in or neutral, then I to restart.', 'bad');
+  log('Stalled. Clutch in or neutral, then {k:crank} to restart.', 'bad');
   sfx('stall');
 }
 // Engine damage. Health is shared by everything that hurts an engine: over-revving (a money shift), running hot,
@@ -3257,10 +3266,10 @@ function shutOff() {
 function startEngine() {
   if (S.engineOn || S.cranking > 0 || S.finished) return;
   // An electric car has nothing to crank: the key just switches it to ready
-  if (CFG.horse) { S.engineOn = true; S.started = true; sfx('neigh'); log('Ready to go. D (1) and W to urge it on; S reins back.', 'ok'); return; }
+  if (CFG.horse) { S.engineOn = true; S.started = true; sfx('neigh'); log('Ready to go. D ({k:g1}) and {k:throttle} to urge it on; {k:brake} reins back.', 'ok'); return; }
   if (CFG.electric) { S.engineOn = true; S.started = true; S.rpm = rpmInGear(S.gear || 1) * (S.gear ? 1 : 0); sfx('ding'); log('Ready.', 'ok'); return; }
   if (S.dead) { sfx('starter'); log('It turns over, but nothing. The engine is finished.', 'bad'); return; }
-  if (CFG.auto && S.gear !== 0) { log('Shift to N first: an automatic only starts in park or neutral.', 'warn'); return; }
+  if (CFG.auto && S.gear !== 0) { log('Put it in N ({k:neutral}) first: an automatic only starts in park or neutral.', 'warn'); return; }
   // In gear with the clutch out, the starter only turns the wheels, and the engine rarely catches
   S.crankLimp = S.gear !== 0 && S.clutch < 0.8;
   S.crankCatch = !S.crankLimp || Math.random() < 0.1;
@@ -7158,8 +7167,8 @@ $('unitSw').addEventListener('keydown', e => { if (e.code === 'Enter' || e.code 
 
 /* ---------- overlay and flow ---------- */
 function showOverlay(title, html, btn, onBtn) {
-  $('ovT').textContent = title;
-  $('ovB').innerHTML = html;
+  $('ovT').textContent = kt(title);
+  $('ovB').innerHTML = kt(html);
   $('ovBtn').textContent = btn;
   $('ovBtn').onclick = onBtn;
   $('overlay').hidden = false;
@@ -7211,8 +7220,8 @@ function showIntro() {
   $('overlay').querySelector('.lbl').textContent = 'Test Track';
   showOverlay(CFG.name + ' on ' + mapName,
     `<p>Free drive: no clock, no laps and no penalties. Take it wherever you like.${S.rain ? (isPassMap() ? ' <b>It is snowing.</b>' : ' <b>It is raining.</b>') : ''}</p>${CFG.modNames.length ? '<p>Mods fitted: ' + CFG.modNames.join(', ') + '.</p>' : ''}
-     <p class="keys">W / ↑ throttle · S / ↓ brake · A D / ← → steer · Shift or C hold clutch · K tap to hold the throttle, tap again to release, hold to ease off · J same for the clutch · 1–${Object.keys(CFG.ratios).length - 1} gears, R reverse, N neutral · Space e-brake · I or Enter crank${CFG.nosHp ? ' · X nitrous' : ''}${CFG.thrusters ? ' · X air thrusters · H hop (hold to fly)' : ''} · M mph or km/h · Backspace back to the garage · Esc or &#96; home · F full screen · V cockpit or chase camera</p>`,
-    'Begin', () => { $('overlay').hidden = true; log(CFG.horse ? 'Press I to gather the reins, then D (1) and W to go.' : CFG.electric ? 'Press I to switch it on, then D (1) and go.' : 'Clutch in, then I to crank.', 'warn'); if (CFG.thrusters) log('Compressed air: hold X for the thrusters, tap H to hop, hold H to fly (A and D steer). The AIR gauge refills by itself.', 'ok'); if (CFG.nosHp) log(`Nitrous fitted: hold X at full throttle above ${Math.round(nosArm() / 100) * 100} rpm.`, 'ok'); });
+     <p class="keys">{k:throttle} / ↑ throttle · {k:brake} / ↓ brake · {k:left} {k:right} / ← → steer · {k:clutch} or C hold clutch · {k:holdThr} tap to hold the throttle, tap again to release, hold to ease off · {k:holdClu} same for the clutch · ${gearKeys(Object.keys(CFG.ratios).length - 1)} gears, {k:rev} reverse, {k:neutral} neutral · {k:ebrake} e-brake · {k:crank} or Enter crank${CFG.nosHp ? ' · {k:x} nitrous' : ''}${CFG.thrusters ? ' · {k:x} air thrusters · {k:h} hop (hold to fly)' : ''}${CFG.rearAssist ? ' · {k:x} rear motor · {k:h} regen mode' : ''} · {k:units} mph or km/h · Backspace back to the garage · Esc or &#96; home · {k:fs} full screen · {k:view} cockpit or chase camera</p>`,
+    'Begin', () => { $('overlay').hidden = true; log(CFG.horse ? 'Press {k:crank} to gather the reins, then D ({k:g1}) and {k:throttle} to go.' : CFG.electric ? 'Press {k:crank} to switch it on, then D ({k:g1}) and go.' : 'Clutch in, then {k:crank} to crank.', 'warn'); if (CFG.thrusters) log('Compressed air: hold {k:x} for the thrusters, tap {k:h} to hop, hold {k:h} to fly ({k:left} and {k:right} steer). The AIR gauge refills by itself.', 'ok'); if (CFG.nosHp) log(`Nitrous fitted: hold {k:x} at full throttle above ${Math.round(nosArm() / 100) * 100} rpm.`, 'ok'); });
 }
 function showFinish() {
   const p = penalty();
@@ -7229,13 +7238,13 @@ function showFinish() {
 const LESSONS = [
   {id: 'start', name: 'Start the engine', goal: 'You are parked in a bay. Start the engine from cold, get into first gear and roll out of the bay.',
    spawn: {x: 130.5, y: 26, h: -Math.PI / 2},
-   checks: [['Lever in neutral (N)', c => S.gear === 0], ['Crank the engine with I', c => S.engineOn],
-            ['Clutch in: hold Shift', c => S.clutch > 0.8], ['First gear: press 1', c => S.gear === 1],
-            ['Ease Shift out with a little W', c => c.d > 0.5], ['Roll 5 m out of the bay', c => c.d >= 5]],
+   checks: [['Lever in neutral (N)', c => S.gear === 0], ['Crank the engine with {k:crank}', c => S.engineOn],
+            ['Clutch in: hold {k:clutch}', c => S.clutch > 0.8], ['First gear: press {k:g1}', c => S.gear === 1],
+            ['Ease {k:clutch} out with a little {k:throttle}', c => c.d > 0.5], ['Roll 5 m out of the bay', c => c.d >= 5]],
    fails: ["Rolling back more than 2 m into the bay behind you.", "Swinging out of your bay sideways before you are clear of it."],
-   steps: ['Check the lever is in neutral (N). Press I to crank, and hold it until the engine catches and settles at idle.',
-           'Push the clutch in with Shift and press 1 for first gear.',
-           'Keep the clutch in, then let Shift out slowly while giving a little W, until the truck moves off.',
+   steps: ['Check the lever is in neutral (N). Press {k:crank} to crank, and hold it until the engine catches and settles at idle.',
+           'Push the clutch in with {k:clutch} and press {k:g1} for first gear.',
+           'Keep the clutch in, then let {k:clutch} out slowly while giving a little {k:throttle}, until the truck moves off.',
            'Roll 5 m out of the bay and you have passed.']},
   {id: 'pull', name: 'Pull away', goal: 'On the open pad: pull away from the yellow line and cross the white line 30 m ahead.',
    spawn: {x: 20, y: 30, h: 0},
@@ -7248,8 +7257,8 @@ const LESSONS = [
    checks: [['Engine running (I)', c => S.engineOn], ['Pull away in first', c => S.gear === 1 && c.d > 1],
             ['Clutch in, shift to 2', c => S.gear === 2 && S.clutch < 0.5], ['Clutch in, shift to 3', c => S.gear >= 3]],
    fails: ["Leaving the lane.", "Crunching three gears."],
-   steps: ['Pull away in first, as in the first lesson.', 'Push the clutch in (Shift) before each shift. Lift off W while you change gear.',
-           'Press 2, let the clutch out smoothly, then repeat for 3. The lane runs nearly 300 m, so there is plenty of room.']},
+   steps: ['Pull away in first, as in the first lesson.', 'Push the clutch in ({k:clutch}) before each shift. Lift off {k:throttle} while you change gear.',
+           'Press {k:g2}, let the clutch out smoothly, then repeat for {k:g3}. The lane runs nearly 300 m, so there is plenty of room.']},
   {id: 'mark', name: 'Stop on the mark', goal: 'In the stop-box lane: stop inside the painted box, 20 m to 40 m ahead, with the engine still running.',
    spawn: {x: 20, y: 110, h: 0},
    checks: [['Engine running (I)', c => S.engineOn], ['Pull away', c => c.d > 1],
@@ -7257,7 +7266,7 @@ const LESSONS = [
             ['Stop inside the box, engine on', c => c.d >= 20 && c.d <= 40 && c.stopped && S.engineOn]],
    fails: ["Going more than 5 m past the end of the box.", "Leaving the lane."],
    steps: ['Pull away and build a little speed.', 'The box is marked with a cross. Aim to be stopped inside it.',
-           'Ease off W and press S gently to slow down. Hold Shift if the revs drop too low.']},
+           'Ease off {k:throttle} and press {k:brake} gently to slow down. Hold {k:clutch} if the revs drop too low.']},
   {id: 'hill', name: 'Hill start', goal: 'In the hill lane: drive onto the ramp, stop between the two lines on the slope, then pull away without rolling back.',
    spawn: {x: 140, y: 75, h: 0},
    checks: [['Engine running (I)', c => S.engineOn], ['Drive onto the slope', c => c.d >= 45],
@@ -7265,9 +7274,9 @@ const LESSONS = [
             ['Pull away 15 m, no roll-back', c => false]],
    fails: ["Rolling back off the bottom of the ramp after you have stopped on it.", "Driving over the top of the ramp before you have stopped on the slope.", "Leaving the lane."],
    steps: ['Drive toward the ramp. It starts 40 m ahead and climbs 5 m.',
-           'Stop between the two lines on the slope (50 m to 70 m from the start): ease off W and press S until the truck is still.',
-           'Hold it there with the clutch in and the brake on. Press Space for the e-brake if it creeps.',
-           'Let Shift out slowly with a little W, release the brake and e-brake, and pull away 15 m past where you stopped.']}
+           'Stop between the two lines on the slope (50 m to 70 m from the start): ease off {k:throttle} and press {k:brake} until the truck is still.',
+           'Hold it there with the clutch in and the brake on. Press {k:ebrake} for the e-brake if it creeps.',
+           'Let {k:clutch} out slowly with a little {k:throttle}, release the brake and e-brake, and pull away 15 m past where you stopped.']}
 ];
 let LESSON = null;                 // index into LESSONS, or null for Test Track
 let L = {stage: 0, stopAt: 0, lastStalls: 0, lastGrinds: 0, coachAt: -99};
@@ -7314,14 +7323,14 @@ function startLesson(i) {
   $('overlay').querySelector('.lbl').textContent = 'Driving School';
   const steps = les.steps.map(s => `<li>${s}</li>`).join('');
   showOverlay(les.name, `<p>${les.goal}</p><p><b>How to do it</b></p><ol style="text-align:left;padding-left:20px;margin:0 0 10px">${steps}</ol><p><b>You fail if</b></p><ul style="text-align:left;padding-left:20px;margin:0 0 10px">${les.fails.map(s => `<li>${s}</li>`).join("")}</ul><p class="keys">Same controls as Test Track. Backspace goes back to the lesson list, Esc to the title.</p>`,
-    'Begin', () => { $('overlay').hidden = true; log(i === 0 ? 'Press I to crank the engine.' : 'Ready when you are.', 'warn'); });
+    'Begin', () => { $('overlay').hidden = true; log(i === 0 ? 'Press {k:crank} to crank the engine.' : 'Ready when you are.', 'warn'); });
 }
 // Draws the lesson checklist: ticked steps, the step you are on, and the ones still to come
 function renderChecks() {
   const les = LESSONS[LESSON];
   $('checkList').innerHTML = les.checks.map(([text], i) => {
     const cls = i < L.ck ? 'done' : i === L.ck ? 'now' : '', mark = i < L.ck ? '✓' : i === L.ck ? '▸' : '·';
-    return `<li class="${cls}"><span class="m">${mark}</span><span>${text}</span></li>`;
+    return `<li class="${cls}"><span class="m">${mark}</span><span>${kt(text)}</span></li>`;
   }).join('');
   L.ckShown = L.ck;
 }
@@ -7379,24 +7388,24 @@ function lessonTick() {
   } else if (id === "hill") {
     if (Math.abs(lat) > 6) return lessonFail("You left the lane. Keep the truck between the lines on the ramp.");
     if (L.stage === 0 && d > 90) return lessonFail("You drove over the top of the ramp without stopping on the slope.");
-    if (L.stage === 1 && d < 40) return lessonFail("The truck rolled back off the bottom of the ramp. Use the e-brake (Space) to hold it while you find the bite.");
+    if (L.stage === 1 && d < 40) return lessonFail("The truck rolled back off the bottom of the ramp. Use the e-brake ({k:ebrake}) to hold it while you find the bite.");
   }
-  if (S.stalls > L.lastStalls) { L.lastStalls = S.stalls; coach('Stalled. Press I to restart. Let the clutch out slower, with a little W as it bites.'); }
-  if (S.grinds > L.lastGrinds) { L.lastGrinds = S.grinds; coach('Crunch. Push the clutch all the way in (Shift) before you change gear.'); }
+  if (S.stalls > L.lastStalls) { L.lastStalls = S.stalls; coach('Stalled. Press {k:crank} to restart. Let the clutch out slower, with a little {k:throttle} as it bites.'); }
+  if (S.grinds > L.lastGrinds) { L.lastGrinds = S.grinds; coach('Crunch. Push the clutch all the way in ({k:clutch}) before you change gear.'); }
 
   if (id === 'start') {
     if (L.stage === 0) {
-      if (S.engineOn) { L.stage = 1; log('Engine running. Push the clutch in with Shift and press 1 for first gear.', 'ok'); }
-      else if (S.elapsed > 3) coach('Press I to crank the engine, and hold it until it catches.');
+      if (S.engineOn) { L.stage = 1; log('Engine running. Push the clutch in with {k:clutch} and press {k:g1} for first gear.', 'ok'); }
+      else if (S.elapsed > 3) coach('Press {k:crank} to crank the engine, and hold it until it catches.');
     } else if (L.stage === 1) {
-      if (S.gear === 1 && S.clutch > 0.8) { L.stage = 2; log('In first with the clutch in. Let Shift out slowly and give a little W.', 'ok'); }
+      if (S.gear === 1 && S.clutch > 0.8) { L.stage = 2; log('In first with the clutch in. Let {k:clutch} out slowly and give a little {k:throttle}.', 'ok'); }
     } else if (d >= 5) return lessonEnd('Engine started, in first gear, and out of the bay.');
   } else if (id === 'pull') {
     if (d >= 30) return lessonEnd('Good, the truck pulled away and crossed the 30 m line.');
   } else if (id === 'shift') {
     if (S.gear >= 3) return lessonEnd('Third gear, and smoothly done.');
   } else if (id === 'mark') {
-    if (d > 40 && !stopped) coach('You are past the box. Brake now, or reverse with R to get back in.');
+    if (d > 40 && !stopped) coach('You are past the box. Brake now, or reverse with {k:rev} to get back in.');
     if (d >= 20 && d <= 40 && stopped && S.engineOn) return lessonEnd('Stopped inside the box with the engine running.');
   } else if (id === 'hill') {
     if (L.stage === 0) {
@@ -7405,7 +7414,7 @@ function lessonTick() {
         log('Held on the slope. Now pull away, and do not let it roll back.', 'ok');
       } else if (d > 70 && stopped) coach('Stopped past the lines. Stop between the two lines on the slope.');
     } else {
-      if (d < L.stopAt - 1.5) coach('Rolling back. Hold it with the brake (S) or the e-brake (Space), then try again.');
+      if (d < L.stopAt - 1.5) coach('Rolling back. Hold it with the brake ({k:brake}) or the e-brake ({k:ebrake}), then try again.');
       if (d >= L.stopAt + 15 && S.engineOn) return lessonEnd('Clean hill start. You pulled away without rolling back.');
     }
   }
@@ -7452,7 +7461,7 @@ function toggleFullscreen() {
 }
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
-  $('fsBtn').textContent = document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)';
+  $('fsBtn').textContent = document.fullscreenElement ? `Exit full screen (${keyLabel('fs')})` : `Full screen (${keyLabel('fs')})`;
 });
 $('fsBtn').addEventListener('click', toggleFullscreen);
 if (FS_BLOCKED) { $('fsBtn').textContent = 'Play full screen (new tab)'; $('fsBtn').title = 'Full screen is blocked where this game is embedded: this opens it on its own page, where F works. Progress saved here does not carry over by itself: use Settings, Export save, then Import save there.'; }
@@ -7594,7 +7603,17 @@ function applySetting(key, v) {
   saveSettings(); renderSettings();
 }
 function openSettings() { renderSettings(); $('settings').hidden = false; }
-function closeSettings() { $('settings').hidden = true; SET_RESET = false; SET_CAPTURE = null; SET_IMPORT = null; }
+function closeSettings() { $('settings').hidden = true; SET_RESET = false; SET_CAPTURE = null; SET_IMPORT = null; refreshKeyTexts(); }
+// Labels and card texts already on the page that name keys, brought up to date with the controls
+function refreshKeyTexts() {
+  document.querySelectorAll('.k-fs').forEach(x => { x.textContent = keyLabel('fs'); });
+  document.querySelectorAll('.k-units').forEach(x => { x.textContent = keyLabel('units'); });
+  document.querySelectorAll('.k-x').forEach(x => { x.textContent = keyLabel('x'); });
+  if (!FS_BLOCKED) $('fsBtn').textContent = document.fullscreenElement ? `Exit full screen (${keyLabel('fs')})` : `Full screen (${keyLabel('fs')})`;
+  for (const [id, car] of Object.entries(CARS)) { const ul = $('spec-' + id); if (ul) ul.innerHTML = car.specs.map(s => `<li>${kt(s)}</li>`).join(''); }
+  document.querySelectorAll('#garage .car-card').forEach(card => { const b = card.querySelector('.car-blurb'), C = CARS[(card.querySelector('[data-car]') || {}).dataset?.car]; if (b && C && C.blurb) b.textContent = kt(C.blurb); });
+  if (typeof buildModLists === 'function') buildModLists();
+}
 $('setBtn').addEventListener('click', openSettings);
 // On the website (a claude.ai artifact) the title screen offers the whole game as one HTML file, through the site's own
 // save prompt; opened as a plain file there is nothing to offer, so the button stays hidden
@@ -8506,7 +8525,7 @@ function crMarket() {
       <div class="cr-row"><span class="tier">TIER ${r.tier}</span><span class="sub">${l.miles.toLocaleString('en-US')} miles</span></div>
       <h3>${l.year || r.year} ${r.name}${l.feLabel ? ' ' + l.feLabel : ''}</h3>
       <div class="sub">${l.fe ? ENGINES[l.fe].hp : r.hp} hp · ${r.kg.toLocaleString('en-US')} kg · ${r.drive}${r.factory ? ' · ' + ENGINES[l.fe || r.body].name : ''}${l.fb === 'auto' ? ' · automatic' : ''}</div>
-      <div class="sub" style="font-style:italic">${((CARS[r.body] || {}).blurb || '').replace(/^An? \d{4} /, `A ${l.year || r.year} `)}</div>
+      <div class="sub" style="font-style:italic">${kt((CARS[r.body] || {}).blurb || '').replace(/^An? \d{4} /, `A ${l.year || r.year} `)}</div>
       ${condBars(l)}
       <div class="note">Seller: "${l.note}"</div>
       <div class="cr-row"><span class="cr-price">${fmt$(l.price)}</span>
@@ -8782,7 +8801,7 @@ function crBill() {
     const label = o.label || (o.n === 0 ? 'STOCK' : CR_PART_CAT === 'fi' ? 'OPTION ' + o.n : 'STAGE ' + o.n);
     return `<div class="bs-tier t${o.n}${o.fitted ? ' fit' : ''}"${blocked ? ' style="opacity:0.45"' : ''}>
       <div class="cr-row"><span class="lv">${label}</span>${o.n && CR_PART_CAT !== 'engine' ? pips(o.n, CR_PART_CAT === 'fi' ? fiOpts.length - 1 : 3) : ''}</div>
-      ${ic(o.icon, 'big')}<b>${o.name}</b><span class="stat">${o.stat}</span><span class="sub">${o.note}</span>
+      ${ic(o.icon, 'big')}<b>${o.name}</b><span class="stat">${o.stat}</span><span class="sub">${kt(o.note)}</span>
       <div class="cr-row" style="margin-top:auto">${action}</div></div>`;
   }).join('');
   const gears = CR_PART_CAT === 'transmission' && tierOf(p.transmission) ? gearPanel(r.body, p, 'data-act="gearreset"') : '';
@@ -10234,7 +10253,7 @@ const PART_TIERS = {
   // A shot over half the engine's own power makes it detonate a little while it sprays (see nosStep).
   nitrous: {name: 'Nitrous', icon: 'nitrous', tiers: [
     {name: 'No nitrous', stat: 'None', note: 'Just air and fuel.'},
-    {name: '50 shot', stat: '+50 hp on the button', note: 'A small wet kit and a 10 lb bottle. Hold X at full throttle above 3,000 rpm. About 30 seconds of spray.', price: 700, shot: 50, secs: 30},
+    {name: '50 shot', stat: '+50 hp on the button', note: 'A small wet kit and a 10 lb bottle. Hold {k:x} at full throttle above 3,000 rpm. About 30 seconds of spray.', price: 700, shot: 50, secs: 30},
     {name: '100 shot', stat: '+100 hp on the button', note: 'Bigger jets. A real kick in the back, and about 20 seconds of it. Hard on small engines.', price: 1300, shot: 100, secs: 20},
     {name: '150 shot', stat: '+150 hp on the button', note: 'Huge jets and a purge valve. About 14 seconds a bottle. A little four will detonate itself to bits.', price: 2100, shot: 150, secs: 14}]},
   flywheel: {name: 'Flywheel', icon: 'flywheel', tiers: [
@@ -10429,7 +10448,7 @@ function buildModLists() {
           `<div class="tt-info"${shown ? '' : ' hidden'}>` + P.tiers.map((t, n) => { const open = partUnlocked(id, cat, n), clash = n > 0 && clashBlocked(cat, m);
             return `<button type="button" class="tt-tier t${n}${n === cur ? ' on' : ''}" data-tier="${cat}:${n}"${open && !clash ? '' : ' disabled'}>
               <span class="lv">${n ? 'STAGE ' + n : 'STOCK'}${n === cur ? ' · FITTED' : !open ? ' · LOCKED' : clash ? ' · REMOVE ' + PART_TIERS[PART_CLASH[cat]].name.toUpperCase() + ' FIRST' : ''}</span>
-              <b>${t.name}</b><span class="stat">${t.stat || ''}</span><small>${t.note || ''}</small></button>`; }).join('') + '</div>';
+              <b>${t.name}</b><span class="stat">${t.stat || ''}</span><small>${kt(t.note || '')}</small></button>`; }).join('') + '</div>';
       }).join('') +
       (tierOf(m.transmission) ? `<div class="tt-gears">${gearPanel(id, m, 'data-gearreset')}</div>` : partCatsFor(id, m.engine).includes('transmission') ? '<div class="sub" style="font-size:11.5px">Gearing stage 1 or up to set the gear ratios.</div>' : '');
     if (tierOf(m.transmission)) gearReadouts(id, m, box);
@@ -10614,7 +10633,7 @@ function buildRosterCards() {
 }
 buildRosterCards();
 // Each card's description, under its name (a locked card hides it, see applyGarageLocks)
-document.querySelectorAll('#garage .car-card').forEach(card => { const C = CARS[card.querySelector('[data-car]').dataset.car]; if (C && C.blurb) card.querySelector('h2').insertAdjacentHTML('afterend', `<p class="car-blurb">${C.blurb}</p>`); });
+document.querySelectorAll('#garage .car-card').forEach(card => { const C = CARS[card.querySelector('[data-car]').dataset.car]; if (C && C.blurb) card.querySelector('h2').insertAdjacentHTML('afterend', `<p class="car-blurb">${kt(C.blurb)}</p>`); });
 for (const id of ['pickup', 'celica', 'ram']) document.querySelector(`[data-car="${id}"]`).closest('.car-card').querySelector('svg').outerHTML = sideSvg(CARS[id]);   // drawn like the rest
 buildMakeFilter();
 showFavStars();
@@ -10624,7 +10643,7 @@ if (!DEV) {
   $('garage').querySelector('h1').insertAdjacentHTML('afterend', '<p class="keys" style="color:var(--dim);font-size:12.5px;margin:-6px 0 12px">Cars and parts unlock as you buy them in the career. The pickup is always here.</p>');
 }
 for (const [id, car] of Object.entries(CARS)) {
-  $('spec-' + id).innerHTML = car.specs.map(s => `<li>${s}</li>`).join('');
+  $('spec-' + id).innerHTML = car.specs.map(s => `<li>${kt(s)}</li>`).join('');
 }
 document.querySelectorAll('[data-car]').forEach(b => b.addEventListener('click', () => {
   GHOST_RACE = TT_MODE === 'ghost' && !!GHOST;   // in ghost mode, a car from the list races the loaded ghost
@@ -10634,6 +10653,7 @@ buildModLists();
 applyCarDefaults('pickup');
 buildGate();
 buildTach();
+refreshKeyTexts();   // labels that name keys, in the player's own controls
 showTitle();
 requestAnimationFrame(frame);
 </script>
