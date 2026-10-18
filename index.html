@@ -7615,16 +7615,32 @@ function refreshKeyTexts() {
   if (typeof buildModLists === 'function') buildModLists();
 }
 $('setBtn').addEventListener('click', openSettings);
-// On the website (a claude.ai artifact) the title screen offers the whole game as one HTML file, through the site's own
-// save prompt; opened as a plain file there is nothing to offer, so the button stays hidden
-if (window.claude && typeof window.claude.use === 'function' && SOURCE_HTML) window.claude.use('downloads').then(dl => {
-  if (!dl) return;
-  const b = $('dlBtn'); b.style.display = '';
-  b.addEventListener('click', async () => {
-    try { await dl.save({filename: 'pickup-trial.html', data: SOURCE_HTML}); b.textContent = 'Downloaded'; }
-    catch (e) { b.textContent = e && e.code === 'declined' ? 'Download the game' : e && e.code === 'rate_limited' ? 'One moment, try again' : 'Download not available here'; }
-  });
-}).catch(() => {});
+// "Download the game" on the title screen, wherever the game is on a website: the whole game as one HTML file.
+// On the claude.ai artifact it goes through the site's own save prompt; on its own page (GitHub Pages) it is a plain
+// download; embedded in someone else's site (where downloads are usually blocked) it opens the game's own page in a new
+// tab, which starts the download (#download). Opened as a plain file there is nothing to offer, so it stays hidden
+function downloadGame(btn) {
+  const url = URL.createObjectURL(new Blob([SOURCE_HTML], {type: 'text/html'}));
+  const a = document.createElement('a'); a.href = url; a.download = 'pickup-trial.html'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  if (btn) btn.textContent = 'Downloaded';
+}
+if (SOURCE_HTML && /^https?:$/.test(location.protocol)) {
+  const b = $('dlBtn'), embedded = window.top !== window;
+  const plain = () => { b.style.display = '';
+    b.addEventListener('click', () => { if (embedded) window.open(PLAY_URL + '#download', '_blank', 'noopener'); else downloadGame(b); }); };
+  if (window.claude && typeof window.claude.use === 'function') window.claude.use('downloads').then(dl => {
+    if (!dl) return;
+    b.style.display = '';
+    b.addEventListener('click', async () => {
+      try { await dl.save({filename: 'pickup-trial.html', data: SOURCE_HTML}); b.textContent = 'Downloaded'; }
+      catch (e) { b.textContent = e && e.code === 'declined' ? 'Download the game' : e && e.code === 'rate_limited' ? 'One moment, try again' : 'Download not available here'; }
+    });
+  }).catch(() => {});
+  else plain();
+  // Sent here from an embedded copy: start the download, once
+  if (!embedded && location.hash === '#download') { history.replaceState(null, '', location.pathname + location.search); setTimeout(() => downloadGame(b), 400); }
+}
 $('setDone').addEventListener('click', closeSettings);
 $('saveFile').addEventListener('change', e => {
   const f = e.target.files[0]; e.target.value = '';
