@@ -8416,7 +8416,7 @@ function showCareer(tab = 'home') {
   $('career').hidden = false;
   renderCareer(tab);
 }
-let CR_TAB = 'home', CR_BILL_CAR = null;
+let CR_TAB = 'home', CR_BILL_CAR = null, CR_SELL_ASK = null;   // CR_SELL_ASK: the car whose Sell button is asking "are you sure?"
 function renderCareer(tab = CR_TAB) {
   requestAnimationFrame(() => { const c = tab === 'bill' && CAREER.cars.find(x => x.uid === CR_BILL_CAR); if (c && $('crBody').querySelector('[data-gb]')) gearReadouts(rosterOf(c).body, c.parts || {}, $('crBody')); });
   CR_TAB = tab;
@@ -8587,8 +8587,10 @@ function crGarage() {
         ${r.body ? `<button class="cr-btn" data-act="drive" data-uid="${car.uid}">Drive</button>` : `<button class="cr-btn" disabled>Not drivable yet</button>`}
         <button class="cr-btn ghost" data-act="bill" data-uid="${car.uid}">Take to Bill's</button>
         ${cur ? '' : `<button class="cr-btn ghost" data-act="current" data-uid="${car.uid}">Make current</button>`}
-        <button class="cr-btn ghost" data-act="sell" data-uid="${car.uid}">Sell</button>
+        ${CR_SELL_ASK === car.uid ? '' : `<button class="cr-btn ghost" data-act="sellask" data-uid="${car.uid}">Sell</button>`}
       </div>
+      ${CR_SELL_ASK === car.uid ? `<div class="cr-row" style="flex-wrap:wrap;gap:8px"><span class="sub" style="color:#e2552f">Sell the ${carTitle(car)} for ${fmt$(carValue(car))}? It's gone for good, with its parts.</span>
+        <button class="cr-btn" data-act="sell" data-uid="${car.uid}" style="background:#b8231f;color:#fff">Yes, sell it</button><button class="cr-btn ghost" data-act="sellno" data-uid="${car.uid}">Keep it</button></div>` : ''}
     </div>`;
   }).join('')}</div>`;
 }
@@ -8905,6 +8907,10 @@ $('career').addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b || b.disabled) return;
   const act = b.dataset.act, uid = Number(b.dataset.uid), car = CAREER.cars.find(c => c.uid === uid);
+  // Selling asks first: Sell shows the question on that car's card; anything else clicked puts it away
+  if (act === 'sellask') { CR_SELL_ASK = uid; return renderCareer('garage'); }
+  if (act === 'sellno') { CR_SELL_ASK = null; return renderCareer('garage'); }
+  if (act !== 'sell') CR_SELL_ASK = null;
   if (act === 'racesub') { CR_RACE_SUB = b.dataset.sub; return renderCareer('races'); }
   if (act === 'nextday') { if (!canAdvance()) return; advanceDay(); }
   else if (act === 'buy') {
@@ -8922,7 +8928,7 @@ $('career').addEventListener('click', e => {
     if (!CAREER.current) CAREER.current = c.uid;
     careerSave(); return renderCareer('garage');
   }
-  else if (act === 'sell' && car) { CAREER.money += carValue(car); CAREER.cars = CAREER.cars.filter(c => c !== car); if (CAREER.current === uid) CAREER.current = CAREER.cars[0]?.uid || null; }
+  else if (act === 'sell' && car && CR_SELL_ASK === uid) { CR_SELL_ASK = null; CAREER.money += carValue(car); CAREER.cars = CAREER.cars.filter(c => c !== car); if (CAREER.current === uid) CAREER.current = CAREER.cars[0]?.uid || null; }
   else if (act === 'current' && car) CAREER.current = uid;
   else if (act === 'fav' && car) car.fav = !car.fav;
   else if (act === 'gsort') CAREER.garageSort = b.dataset.sort;
