@@ -380,7 +380,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
     <div class="lbl" id="rpm" style="margin-top:4px">0 rpm</div>
     <div class="lbl" style="margin-top:4px">Gear</div>
     <div class="big" id="gear">N</div>
-    <svg id="tracLamp" viewBox="-12 -12 24 31" width="26" height="30" hidden aria-label="Traction control or ABS working"><path d="M-9 1L-7-6Q0-9 7-6L9 1V5H-9Z" fill="#ff8a1a"/><rect x="-9" y="5" width="4" height="3" fill="#ff8a1a"/><rect x="5" y="5" width="4" height="3" fill="#ff8a1a"/><rect x="-5.5" y="-5" width="11" height="3.5" fill="#1a1208"/><path d="M-8 10C-4 12-9 14-5 17M4 10C8 12 3 14 7 17" stroke="#ff8a1a" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+    <svg id="tracLamp" viewBox="-12 -12 24 31" width="26" height="30" style="display:none" aria-label="Traction control or ABS working"><path d="M-9 1L-7-6Q0-9 7-6L9 1V5H-9Z" fill="#ff8a1a"/><rect x="-9" y="5" width="4" height="3" fill="#ff8a1a"/><rect x="5" y="5" width="4" height="3" fill="#ff8a1a"/><rect x="-5.5" y="-5" width="11" height="3.5" fill="#1a1208"/><path d="M-8 10C-4 12-9 14-5 17M4 10C8 12 3 14 7 17" stroke="#ff8a1a" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
   </div>
 </div>
 
@@ -578,7 +578,7 @@ const CAB3D = {pickup: {eye: {u: 0.75, v: -0.38, z: 1.6}, hor: 0.42},
   horse: {eye: {u: -0.08, v: 0, z: 2.6}, hor: 0.32}, buggy: {eye: {u: -0.55, v: -0.25, z: 1.85}, hor: 0.36}};
 const SWAY = {u: 0, v: 0, z: 0};
 // Player settings, saved in this browser (the Settings menu on the title screen)
-const SETTINGS = Object.assign({units: 'mph', cockpit: '3d', quality: 'full', sway: true, terrain: 'normal', volume: 80, music: true, view: 'cockpit', tips: true},
+const SETTINGS = Object.assign({units: 'mph', cockpit: '3d', quality: 'full', sway: true, terrain: 'normal', renderer: 'gl', volume: 80, music: true, view: 'cockpit', tips: true},
   (() => { try { return JSON.parse(localStorage.getItem('pt-settings')) || {}; } catch (e) { return {}; } })());
 // The career save, and the owned car being driven if any (declared up here: the very first state reads it)
 let CAREER = null, CAREER_CAR = null;   // CAREER_CAR: the owned car being driven, if any
@@ -5844,6 +5844,7 @@ const SUN_DIR_SUNSET = (() => { const a = 1.1, v = [Math.cos(a), Math.sin(a), 0.
 const SUN_DIR_DAY = (() => { const a = 1.1, v = [Math.cos(a), Math.sin(a), 1.4], n = Math.hypot(...v); return v.map(c => c / n); })();
 function drawTerrain() {
   if (!RM.d) buildRoadMap();
+  if (SETTINGS.renderer !== 'classic' && glTerrain()) return;   // WebGL draws the ground on the graphics chip (see GLT)
   const SD = SHOWCASE ? SUN_DIR_SUNSET : SUN_DIR_DAY;
   const c = Math.cos(CAMYAW), s = Math.sin(CAMYAW);
   const step = {high: 3, normal: 4, low: 8}[SETTINGS.terrain] || 4;   // column width in pixels: the Settings' graphics detail
@@ -5877,6 +5878,156 @@ function drawTerrain() {
   }
 }
 
+/* ---------- the WebGL ground ---------- */
+// The same ground as the column ray march above, drawn on the graphics chip instead. The world is cut into 64 m tiles;
+// each tile, the first time it is needed, gets a mesh of heights 2 m apart (with their normals, for the sun shading) and
+// a 128 x 128 color texture (0.5 m a texel, the road raster's own resolution) baked from exactly the same colors the
+// ray march uses (surfaceAt and the palettes, the alpine ground, the forest floor, snow). Each frame the tiles in view
+// are drawn with the game's own camera (the vertex shader is proj() itself: screen x = center + F x lateral / forward,
+// screen y = HOR - F x height / forward), so the cars, trees and painted marks drawn over it in 2D sit exactly on it,
+// and the picture is copied into the 2D canvas where the ground has always been drawn (so the cockpit roll, the order
+// of everything else and the overlays are untouched). Tiles are baked a few at a time (nearest first) so driving never
+// stalls, and kept until there are too many. If WebGL is missing or fails, the classic ray march draws the ground.
+const GLT = {ok: null, gl: null, cv: null, prog: null, tiles: new Map(), key: '', idx: null, pad: 0, w: 0, h: 0, frame: 0};
+const GLT_T = 64, GLT_G = 32, GLT_N = 128, GLT_FAR = 240;
+function glInit() {
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl', {alpha: true, antialias: false, depth: true, premultipliedAlpha: true, preserveDrawingBuffer: false});
+    if (!gl) return false;
+    const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, `
+      attribute vec3 aPos; attribute vec3 aNrm; attribute vec2 aUV;
+      uniform vec3 uCam; uniform vec2 uCS; uniform float uF; uniform vec2 uCtr; uniform vec2 uSize;
+      varying vec2 vUV; varying vec3 vN; varying float vFwd;
+      void main() {
+        float dx = aPos.x - uCam.x, dy = aPos.y - uCam.y;
+        float f = dx * uCS.x + dy * uCS.y, r = dy * uCS.x - dx * uCS.y, u = aPos.z - uCam.z;
+        // proj(): x = ctr.x + F r / f, y = ctr.y - F u / f, as clip coordinates with w = f (so it is perspective-correct)
+        float near = 0.5, far = 2000.0;
+        gl_Position = vec4((2.0 * uCtr.x / uSize.x - 1.0) * f + 2.0 * uF * r / uSize.x,
+                           (1.0 - 2.0 * uCtr.y / uSize.y) * f + 2.0 * uF * u / uSize.y,
+                           (f * (far + near) - 2.0 * far * near) / (far - near), f);
+        vUV = aUV; vN = aNrm; vFwd = f;
+      }`));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `
+      precision mediump float;
+      uniform sampler2D uTex; uniform vec3 uSun; uniform float uWet; uniform float uFar;
+      varying vec2 vUV; varying vec3 vN; varying float vFwd;
+      void main() {
+        if (vFwd > uFar) discard;   // the ground stops where the ray march stopped; the sky's ground fill lies beyond
+        float b = (0.45 + 0.6 * max(0.0, dot(normalize(vN), uSun))) * uWet;
+        gl_FragColor = vec4(texture2D(uTex, vUV).rgb * b, 1.0);
+      }`));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    // One index buffer for every tile's grid
+    const G = GLT_G, idx = new Uint16Array(G * G * 6);
+    let k = 0;
+    for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) { const a = j * (G + 1) + i, b = a + 1, c2 = a + G + 1, d = c2 + 1; idx.set([a, c2, b, b, c2, d], k); k += 6; }
+    const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+    c.addEventListener('webglcontextlost', e => { e.preventDefault(); GLT.ok = false; log('The graphics chip dropped the WebGL ground; switching to the classic renderer.', 'warn'); });
+    // Anisotropic filtering keeps the road's lines sharp where the ground is seen at a shallow angle (nearly everywhere)
+    const aniso = gl.getExtension('EXT_texture_filter_anisotropic') || gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic');
+    Object.assign(GLT, {aniso, anisoMax: aniso ? Math.min(16, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)) : 0});
+    Object.assign(GLT, {gl, cv: c, prog, ib, loc: {
+      pos: gl.getAttribLocation(prog, 'aPos'), nrm: gl.getAttribLocation(prog, 'aNrm'), uv: gl.getAttribLocation(prog, 'aUV'),
+      cam: gl.getUniformLocation(prog, 'uCam'), cs: gl.getUniformLocation(prog, 'uCS'), F: gl.getUniformLocation(prog, 'uF'), ctr: gl.getUniformLocation(prog, 'uCtr'),
+      size: gl.getUniformLocation(prog, 'uSize'), sun: gl.getUniformLocation(prog, 'uSun'), wet: gl.getUniformLocation(prog, 'uWet'), far: gl.getUniformLocation(prog, 'uFar'), tex: gl.getUniformLocation(prog, 'uTex')}});
+    return true;
+  } catch (e) { console.warn('WebGL ground unavailable:', e); return false; }
+}
+// The ground color at a point, exactly as the ray march picks it (before the sun shading)
+function groundRgb(wx, wy, flags) {
+  const sf = surfaceAt(wx, wy);
+  if (flags.forest && sf === 0) return forestFloor(wx, wy);
+  if (flags.snow) return SNOW_PAL[sf] || SNOW_PAL[0];
+  if (flags.pass) return sf === 0 ? alpineGround(elev(wx, wy), wx, wy) : PASS_PAL[sf] || TERRAIN_PAL[sf];
+  return TERRAIN_PAL[sf] || TERRAIN_PAL[0];
+}
+// Bake one tile: its mesh (heights, normals, texture coordinates) and its color texture
+function glBakeTile(tx, ty, flags) {
+  const gl = GLT.gl, G = GLT_G, N = GLT_N, T = GLT_T, x0 = tx * T, y0 = ty * T, step = T / G;
+  const v = new Float32Array((G + 1) * (G + 1) * 8);
+  let k = 0;
+  for (let j = 0; j <= G; j++) for (let i = 0; i <= G; i++) {
+    const x = x0 + i * step, y = y0 + j * step, z = elev(x, y);
+    const gx = (elev(x + 1, y) - elev(x - 1, y)) / 2, gy = (elev(x, y + 1) - elev(x, y - 1)) / 2, n = Math.hypot(gx, gy, 1);
+    v.set([x, y, z, -gx / n, -gy / n, 1 / n, i / G, j / G], k); k += 8;
+  }
+  const px = new Uint8Array(N * N * 4), r = T / N;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const c = groundRgb(x0 + (i + 0.5) * r, y0 + (j + 0.5) * r, flags), o = (j * N + i) * 4;
+    px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255;
+  }
+  const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, v, gl.STATIC_DRAW);
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N, N, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  if (GLT.aniso) gl.texParameterf(gl.TEXTURE_2D, GLT.aniso.TEXTURE_MAX_ANISOTROPY_EXT, GLT.anisoMax);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  return {vb, tex, used: GLT.frame};
+}
+function glDropTiles() { const gl = GLT.gl; for (const t of GLT.tiles.values()) { gl.deleteBuffer(t.vb); gl.deleteTexture(t.tex); } GLT.tiles.clear(); }
+// Draw the ground with WebGL; false means "not available, use the ray march"
+function glTerrain() {
+  if (GLT.ok === null) GLT.ok = glInit();
+  if (!GLT.ok) return false;
+  const gl = GLT.gl, L = GLT.loc;
+  GLT.frame++;
+  // What the colors depend on: the map, its road raster, snow, and the title's showcase
+  const flags = {snow: snowing(), pass: !SHOWCASE && isPassMap(), forest: !SHOWCASE && isForestMap()};
+  const key = MAP_KIND + '|' + flags.snow + '|' + flags.pass + '|' + flags.forest;
+  if (key !== GLT.key || GLT.rm !== RM.d) { glDropTiles(); GLT.key = key; GLT.rm = RM.d; }
+  // The canvas: the view plus the cockpit roll's padding (grown when needed, shrunk only when it is far too big)
+  const pad = VIEW_PAD ? Math.ceil(VIEW_PAD / 64) * 64 : 0;
+  if (pad > GLT.pad || pad < GLT.pad - 256) GLT.pad = pad;
+  const P = GLT.pad, Wc = VW + 2 * P, Hc = VH + 2 * P, pw = Math.round(Wc * DPR), ph = Math.round(Hc * DPR);
+  if (GLT.cv.width !== pw || GLT.cv.height !== ph) { GLT.cv.width = pw; GLT.cv.height = ph; }
+  gl.viewport(0, 0, pw, ph);
+  gl.clearColor(0, 0, 0, 0); gl.clearDepth(1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
+  gl.useProgram(GLT.prog);
+  const c = Math.cos(CAMYAW), s = Math.sin(CAMYAW), SD = SHOWCASE ? SUN_DIR_SUNSET : SUN_DIR_DAY;
+  gl.uniform3f(L.cam, CAMX, CAMY, CAMZ); gl.uniform2f(L.cs, c, s); gl.uniform1f(L.F, F);
+  gl.uniform2f(L.ctr, P + VW / 2, P + HOR); gl.uniform2f(L.size, Wc, Hc);
+  gl.uniform3f(L.sun, SD[0], SD[1], SD[2]); gl.uniform1f(L.far, GLT_FAR);
+  gl.uniform1f(L.wet, S.rain && !SHOWCASE && !flags.snow ? 1 - 0.28 * S.rain : 1);
+  gl.uniform1i(L.tex, 0); gl.activeTexture(gl.TEXTURE0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, GLT.ib);
+  gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv);
+  // The tiles in view: within reach and not behind the camera, nearest first (so baking goes where it matters)
+  const T = GLT_T, R = GLT_FAR + T, tx0 = Math.floor((CAMX - R) / T), tx1 = Math.floor((CAMX + R) / T), ty0 = Math.floor((CAMY - R) / T), ty1 = Math.floor((CAMY + R) / T);
+  const want = [];
+  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+    const cx = (tx + 0.5) * T - CAMX, cy = (ty + 0.5) * T - CAMY, d = Math.hypot(cx, cy);
+    if (d > R) continue;
+    if (cx * c + cy * s < -T * 0.75) continue;   // wholly behind the lens
+    want.push([d, tx, ty]);
+  }
+  want.sort((a, b) => a[0] - b[0]);
+  const t0 = performance.now();
+  for (const [d, tx, ty] of want) {
+    const id = tx + ',' + ty;
+    let t = GLT.tiles.get(id);
+    // Bake new tiles within a few milliseconds a frame (all of the near ones at once, so nothing pops in up close)
+    if (!t) { if (d > 140 && performance.now() - t0 > 4) continue; t = glBakeTile(tx, ty, flags); GLT.tiles.set(id, t); }
+    t.used = GLT.frame;
+    gl.bindBuffer(gl.ARRAY_BUFFER, t.vb);
+    gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(L.nrm, 3, gl.FLOAT, false, 32, 12); gl.vertexAttribPointer(L.uv, 2, gl.FLOAT, false, 32, 24);
+    gl.bindTexture(gl.TEXTURE_2D, t.tex);
+    gl.drawElements(gl.TRIANGLES, GLT_G * GLT_G * 6, gl.UNSIGNED_SHORT, 0);
+  }
+  // Too many kept: drop the ones unseen longest
+  if (GLT.tiles.size > 220) {
+    const old = [...GLT.tiles.entries()].sort((a, b) => a[1].used - b[1].used).slice(0, GLT.tiles.size - 180);
+    for (const [id, t] of old) { gl.deleteBuffer(t.vb); gl.deleteTexture(t.tex); GLT.tiles.delete(id); }
+  }
+  ctx.drawImage(GLT.cv, -P, -P, Wc, Hc);   // into the 2D picture, where the ground has always gone
+  return true;
+}
 // True when a hill between the camera and (x, y) hides the ground there, so objects standing on it are not drawn
 function hiddenByTerrain(x, y) {
   const bz = elev(x, y), dx = x - CAMX, dy = y - CAMY, n = 24;
@@ -7137,7 +7288,7 @@ function hud() {
   $('spd').textContent = fmtSpeed();
   $('rpm').textContent = Math.round(S.rpm) + ' rpm';
   $('gear').textContent = S.gear === 0 ? 'N' : S.gear === -1 ? 'R' : CFG.cvt ? 'D' : CFG.auto ? 'D' + (S.agear || 1) : S.gear;
-  $('tracLamp').hidden = !tractionLit();
+  $('tracLamp').style.display = tractionLit() ? '' : 'none';   // (an SVG ignores the hidden property, so its display is set)
   $('needle').setAttribute('transform', `rotate(${-135 + clamp(S.rpm / CFG.gaugeMax, 0, 1) * 270} 100 100)`);
   $('pc').style.height = (S.clutch * 100) + '%';
   $('pt').style.height = (S.thr * 100) + '%';
@@ -7473,6 +7624,7 @@ const SET_ROWS = [
   ['cockpit', 'Cockpit view', '3D cabs have real depth and move with the car. Simple drops the small details for speed.', [['3d-full', '3D detailed'], ['3d-simple', '3D simple'], ['2d', 'Classic 2D']]],
   ['sway', 'Head movement', 'In 3D cabs, your head leans in corners and tips forward under braking.', [['on', 'On'], ['off', 'Off']]],
   ['view', 'Start drives in', 'V still switches during a drive.', [['cockpit', 'Cockpit'], ['chase', 'Chase camera']]],
+  ['renderer', 'Renderer', 'WebGL draws the ground on the graphics chip, which is much faster. Classic is the old way: use it if the ground looks wrong or runs slowly on your computer.', [['gl', 'WebGL'], ['classic', 'Classic']]],
   ['terrain', 'Graphics', 'Lower is faster on slow machines. Low also draws at a lower resolution, with coarser ground, simpler trees and crowds, a shorter view distance and less rain, snow and falling leaves.', [['high', 'High'], ['normal', 'Normal'], ['low', 'Low']]],
   ['music', 'Title music', '', [['on', 'On'], ['off', 'Off']]],
   ['tips', 'Pop-up tips', 'The hints and notes that pop up while you drive. Off still shows warnings about damage and penalties.', [['on', 'On'], ['off', 'Off']]]
