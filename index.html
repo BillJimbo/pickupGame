@@ -5246,6 +5246,7 @@ function drawLight(i) {
 // A box in the car's own frame (u along travel, v across, z up). Only faces the lens can see are drawn.
 // A car is drawn one box at a time, farthest from the camera first, so the parts that sit in front always paint last
 let MODEL_Q = null;
+let GLS_REC = null;   // set while the WebGL scenery is being baked: boxes go to its builder instead of the screen
 let QFIRST = false;   // set while drawing the wheels: they always go down before the body, whatever the camera angle
 // A fixed sort key for parts that must go at a set point: glass after the body, spoiler after the glass, roof last
 let QKEY = null;
@@ -5256,6 +5257,7 @@ function queued(fn) {
   for (const it of q) it.run();
 }
 function drawBox(...a) {
+  if (GLS_REC) return GLS_REC(...a);
   if (!MODEL_Q) return drawBoxNow(...a);
   // Sort by the box's nearest point to the camera, so a big box is judged by the face that is actually in front
   const [cp, u0, u1, v0, v1, z0, z1] = a;
@@ -5893,7 +5895,9 @@ const GLT_T = 64, GLT_G = 32, GLT_N = 128, GLT_FAR = 240;
 function glInit() {
   try {
     const c = document.createElement('canvas');
-    const gl = c.getContext('webgl', {alpha: true, antialias: false, depth: true, premultipliedAlpha: true, preserveDrawingBuffer: false});
+    // (Smoothed edges cost far more than anything else on a sharp screen, where they hardly show: 3 frames' drawing took
+    // 25 ms with them and 17 without at 1440 x 900 x 2. The picture is kept for the frame's slices of scenery.)
+    const gl = c.getContext('webgl', {alpha: true, antialias: !LOWG() && DPR < 1.5, depth: true, premultipliedAlpha: true, preserveDrawingBuffer: true});
     if (!gl) return false;
     const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
     const prog = gl.createProgram();
@@ -6025,8 +6029,356 @@ function glTerrain() {
     const old = [...GLT.tiles.entries()].sort((a, b) => a[1].used - b[1].used).slice(0, GLT.tiles.size - 180);
     for (const [id, t] of old) { gl.deleteBuffer(t.vb); gl.deleteTexture(t.tex); GLT.tiles.delete(id); }
   }
+  gl.disableVertexAttribArray(L.pos); gl.disableVertexAttribArray(L.nrm); gl.disableVertexAttribArray(L.uv);
   ctx.drawImage(GLT.cv, -P, -P, Wc, Hc);   // into the 2D picture, where the ground has always gone
   return true;
+}
+/* ---------- the WebGL scenery ---------- */
+// Stage 2: the trees, houses, offices, the speedway's stands, walls and crowd, and the forest's fans, on the graphics
+// chip. Everything that does not move is baked once per map (and again when the state's trees change, or snow, or the
+// Low setting) into meshes grouped in 128 m chunks; a frame only picks the chunks in reach. The depth buffer sorts it,
+// against the WebGL ground too, so a hill hides a tree exactly. Each vertex carries its object's center and reach.
+// Cars, smoke and the rest are still painted in 2D, far to near, and must sort with all this, so the scenery is drawn
+// in slices: the shader keeps only objects whose center lies in a distance range, the picture is copied into the 2D
+// canvas, the 2D objects nearer than that range are painted over it, then the next slice goes on top of them. That is
+// the same order the 2D painter used. Slices are only cut where scenery really lies between two 2D objects, at most
+// GLS_SLICES a frame (the gaps holding the fewest objects are merged first). Objects with a reach over 400 m (the
+// stands and light towers) sort behind everything, as they did in 2D.
+const GLS = {prog: null, loc: null, key: '', city: null, parts: [], chunks: [], dyn: null, dynN: 0, dynD: null, ds: new Float32Array(4096)};
+const GLS_CHUNK = 128, GLS_SLICES = 8;
+function glsInit() {
+  const gl = GLT.gl;
+  const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, `
+    attribute vec3 aPos; attribute vec4 aCol; attribute vec3 aC;
+    uniform vec3 uCam; uniform vec2 uCS; uniform float uF; uniform vec2 uCtr; uniform vec2 uSize; uniform vec2 uSlice;
+    varying vec4 vCol;
+    void main() {
+      float d = length(aC.xy - uCam.xy), sd = aC.z > 400.0 ? d + 1000000.0 : d;
+      if (d > aC.z || sd < uSlice.x || sd >= uSlice.y) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vCol = vec4(0.0); return; }
+      float dx = aPos.x - uCam.x, dy = aPos.y - uCam.y;
+      float f = dx * uCS.x + dy * uCS.y, r = dy * uCS.x - dx * uCS.y, u = aPos.z - uCam.z;
+      float near = 0.5, far = 2000.0;   // (the same camera and depth as the ground's shader)
+      gl_Position = vec4((2.0 * uCtr.x / uSize.x - 1.0) * f + 2.0 * uF * r / uSize.x,
+                         (1.0 - 2.0 * uCtr.y / uSize.y) * f + 2.0 * uF * u / uSize.y,
+                         (f * (far + near) - 2.0 * far * near) / (far - near), f);
+      vCol = aCol;
+    }`));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `
+    precision mediump float; varying vec4 vCol;
+    void main() { gl_FragColor = vec4(vCol.rgb * vCol.a, vCol.a); }`));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  GLS.prog = prog;
+  const U = n => gl.getUniformLocation(prog, n);
+  GLS.loc = {pos: gl.getAttribLocation(prog, 'aPos'), col: gl.getAttribLocation(prog, 'aCol'), c: gl.getAttribLocation(prog, 'aC'),
+    cam: U('uCam'), cs: U('uCS'), F: U('uF'), ctr: U('uCtr'), size: U('uSize'), slice: U('uSlice')};
+  GLS.dyn = gl.createBuffer();
+}
+// A color as [r, g, b]: from [r, g, b], '#rrggbb' or 'rgb(r,g,b)' (the 2D code's shadeCol and tint make these)
+const GLS_COLS = new Map();
+function glsCol(c) {
+  if (typeof c !== 'string') return c;
+  let v = GLS_COLS.get(c);
+  if (!v) {
+    if (c[0] === '#') { const n = parseInt(c.slice(1), 16); v = [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+    else v = c.match(/[\d.]+/g).slice(0, 3).map(Number);
+    GLS_COLS.set(c, v);
+  }
+  return v;
+}
+// The mesh builder: objects go in the chunk under their center; a chunk is split where its 16-bit indices would run out
+function glsBuilder() {
+  const chunks = new Map(); let cur = null, cx = 0, cy = 0, reach = 260;
+  const part = () => ({v: [], o: [], t: [], n: 0});
+  const B = {
+    obj(x, y, r) {
+      cx = x; cy = y; reach = r;
+      const k = Math.floor(x / GLS_CHUNK) + ',' + Math.floor(y / GLS_CHUNK);
+      cur = chunks.get(k);
+      if (!cur) { cur = {x: (Math.floor(x / GLS_CHUNK) + 0.5) * GLS_CHUNK, y: (Math.floor(y / GLS_CHUNK) + 0.5) * GLS_CHUNK, reach: 0, parts: [part()], objs: []}; chunks.set(k, cur); }
+      cur.reach = Math.max(cur.reach, r); cur.objs.push(x, y, r);
+    },
+    // A flat convex polygon of [x, y, z] points; alpha under 255 goes in the see-through list, drawn after the solid one
+    poly(pts, col, alpha = 255) {
+      if (cur.parts[cur.parts.length - 1].n + pts.length > 65000) cur.parts.push(part());
+      const P = cur.parts[cur.parts.length - 1], c = glsCol(col), n0 = P.n;
+      const packed = ((alpha & 255) << 24 | (Math.min(255, c[2]) & 255) << 16 | (Math.min(255, c[1]) & 255) << 8 | (Math.min(255, c[0]) & 255)) >>> 0;
+      for (const p of pts) P.v.push(p[0], p[1], p[2], packed, cx, cy, reach);
+      const L = alpha < 255 ? P.t : P.o;
+      for (let i = 1; i < pts.length - 1; i++) L.push(n0, n0 + i, n0 + i + 1);
+      P.n += pts.length;
+    },
+    // The 2D code's own box, in a car-style frame: its corners stand on the ground under each (as proj() does)
+    box(cp, u0, u1, v0, v1, z0, z1, side, top, end) {
+      const rx = -cp.hy, ry = cp.hx;
+      const P = (u, v, z) => { const x = cp.x + cp.hx * u + rx * v, y = cp.y + cp.hy * u + ry * v; return [x, y, elev(x, y) + z]; };
+      const q = (a, b, c, d, col) => B.poly([P(...a), P(...b), P(...c), P(...d)], col);
+      q([u1, v0, z0], [u1, v1, z0], [u1, v1, z1], [u1, v0, z1], end);
+      q([u0, v0, z0], [u0, v1, z0], [u0, v1, z1], [u0, v0, z1], end);
+      q([u0, v1, z0], [u1, v1, z0], [u1, v1, z1], [u0, v1, z1], side);
+      q([u0, v0, z0], [u1, v0, z0], [u1, v0, z1], [u0, v0, z1], side);
+      q([u0, v0, z1], [u1, v0, z1], [u1, v1, z1], [u0, v1, z1], top);
+    },
+    chunks
+  };
+  return B;
+}
+// A tapered cylinder, as frustum(), every side lit by the sun the same way
+function glsFrustum(B, cx, cy, z0, z1, r0, r1, n, rot, rgb, lift, cap) {
+  const ring = (r, z) => Array.from({length: n}, (_, i) => { const a = rot + i / n * Math.PI * 2; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r, z]; });
+  const P0 = ring(r0, z0), P1 = ring(r1, z1), L = (c, l) => c.map(v => v * l);
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, a = rot + (i + 0.5) / n * Math.PI * 2;
+    B.poly([P0[i], P0[j], P1[j], P1[i]], L(rgb, (0.6 + 0.42 * Math.max(0, Math.cos(a) * SUN_V[0] + Math.sin(a) * SUN_V[1])) * lift));
+  }
+  if (cap) B.poly(P1, L(rgb, 1.12 * lift));
+}
+// One tree, the same shapes as drawTree at its near detail (Low: its far detail, two pine layers, no second lump)
+function glsTree(B, t, snow, low) {
+  const base = elev(t.cx, t.cy), rgb = snow ? t.rgb.map(v => v + (238 - v) * 0.38) : t.rgb;
+  B.obj(t.cx, t.cy, low ? 150 : 260);
+  glsFrustum(B, t.cx, t.cy, base, base + t.trunk + (t.kind === 'pine' ? 0.3 : 0.6), t.tr, t.tr * 0.75, 4, t.rot, TRUNK_RGB, 1, false);
+  if (t.kind === 'pine') {
+    const n = low ? 4 : 7, L = low ? 2 : t.layers, span = t.h - t.trunk, step = span / L;
+    for (let k = 0; k < L; k++) {
+      const z0 = base + t.trunk + k * step * 0.82, z1 = k === L - 1 ? base + t.h : z0 + step * 1.45, r0 = t.r * (1 - k * 0.2), r1 = k === L - 1 ? 0 : r0 * 0.2;
+      glsFrustum(B, t.cx, t.cy, z0, z1, r0, Math.max(r1, 0.001), n, t.rot + k * 0.4, rgb, 0.92 + k * 0.07, false);
+    }
+  } else {
+    const n = low ? 5 : 8, zc = base + t.trunk, zm = zc + (t.h - t.trunk) * 0.45, zt = base + t.h;
+    const blob = (cx, cy, s, lift) => {
+      glsFrustum(B, cx, cy, zc + (t.h - t.trunk) * (1 - s) * 0.3, zm, t.r * 0.55 * s, t.r * s, n, t.rot, rgb, 0.9 * lift, false);
+      glsFrustum(B, cx, cy, zm, zm + (zt - zm) * s, t.r * s, t.r * 0.5 * s, n, t.rot, rgb, lift, true);
+    };
+    blob(t.cx, t.cy, 1, 1);
+    if (t.lump && !low) blob(t.cx + Math.cos(t.lump.a) * t.r * 0.6, t.cy + Math.sin(t.lump.a) * t.r * 0.6, t.lump.s, 1);
+  }
+}
+// The speedway: its walls and fence (6 m pieces), then the stands, crowd and light towers, as the 2D drawing laid them out
+function glsStadium(B, low) {
+  if (!STADIUM) STADIUM = buildStadium();
+  const lit = (nx, ny) => 0.62 + 0.4 * Math.max(0, nx * SUN_V[0] + ny * SUN_V[1]);
+  const shade = (c, l) => glsCol(c).map(v => v * l);
+  for (let s = 0; s < OVAL_L; s += 6) {
+    // The outer wall, its blue band, the see-through catch fence, a post and the top rail
+    const a = ovalPt(s, OV_OUTER), b = ovalPt(s + 6, OV_OUTER), m = ovalPt(s + 3, OV_OUTER), top = OV_BASE + 1.1;
+    const ea = 2 * OV_TRACK * ovalBank(a[0]), eb = 2 * OV_TRACK * ovalBank(b[0]), w = ovalO((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), l = lit(-w.nx, -w.ny);
+    const face = (z0a, z0b, z1a, z1b) => [[a[0], a[1], z0a], [b[0], b[1], z0b], [b[0], b[1], z1b], [a[0], a[1], z1a]];
+    B.obj(m[0], m[1], 420);
+    B.poly(face(ea, eb, top, top), shade('#e8e6e0', l));
+    const inx = -w.nx * 0.03, iny = -w.ny * 0.03;   // (the band a little proud of the wall, toward the track)
+    B.poly([[a[0] + inx, a[1] + iny, top - 0.25], [b[0] + inx, b[1] + iny, top - 0.25], [b[0] + inx, b[1] + iny, top - 0.05], [a[0] + inx, a[1] + iny, top - 0.05]], shade('#1d4f9c', l));
+    B.poly(face(top, top, top + 3.5, top + 3.5), [200, 206, 214], 56);
+    const tx = (b[0] - a[0]) / 6, ty = (b[1] - a[1]) / 6;
+    for (const [px, py] of [[tx * 0.05, ty * 0.05], [w.nx * 0.05, w.ny * 0.05]]) B.poly([[a[0] - px, a[1] - py, top], [a[0] + px, a[1] + py, top], [a[0] + px, a[1] + py, top + 3.5], [a[0] - px, a[1] - py, top + 3.5]], [154, 157, 162]);
+    B.poly(face(top + 3.46, top + 3.46, top + 3.54, top + 3.54), [154, 157, 162]);
+    // The inner wall and its red band
+    const c = ovalPt(s, OV_INNER), d = ovalPt(s + 6, OV_INNER), mi = ovalPt(s + 3, OV_INNER), wi = ovalO(mi[0], mi[1]), li = lit(wi.nx, wi.ny);
+    const zc = elev(c[0], c[1]), zd = elev(d[0], d[1]);
+    B.obj(mi[0], mi[1], 420);
+    B.poly([[c[0], c[1], zc], [d[0], d[1], zd], [d[0], d[1], zd + 0.9], [c[0], c[1], zc + 0.9]], shade('#dedad2', li));
+    const ox = wi.nx * 0.03, oy = wi.ny * 0.03;
+    B.poly([[c[0] + ox, c[1] + oy, zc + 0.7], [d[0] + ox, d[1] + oy, zd + 0.7], [d[0] + ox, d[1] + oy, zd + 0.86], [c[0] + ox, c[1] + oy, zc + 0.86]], shade('#b5271f', li));
+  }
+  for (const ch of STADIUM.chunks) {
+    const sec = ch.sec, o0 = OV_STAND, o1 = OV_STAND + sec.depth, f = 2.2, h = sec.h;
+    const steps = Math.max(1, Math.round((ch.b - ch.a) / 7)), ds = (ch.b - ch.a) / steps, mq = ovalPt((ch.a + ch.b) / 2, OV_STAND + sec.depth * 0.4);
+    const pt = (s, o, z) => { const q = ovalPt(s, o); return [q[0], q[1], OV_BASE + z]; };
+    const seat = (s, t, up = 0) => pt(s, o0 + sec.depth * t, f + (h - f) * t + up);
+    B.obj(mq[0], mq[1], 900);
+    for (let k = 0; k < steps; k++) {
+      const s0 = ch.a + k * ds, s1 = s0 + ds;
+      B.poly([pt(s0, o1, 0), pt(s1, o1, 0), pt(s1, o1, h), pt(s0, o1, h)], shade('#7d7a74', 0.8));   // the back wall
+      B.poly([seat(s0, 0), seat(s1, 0), seat(s1, 1), seat(s0, 1)], shade(sec.seat, 0.9));             // the seats, rising away
+      if (!low) for (let r = 1; r < 14; r++) B.poly([seat(s0, r / 14 - 0.004, 0.03), seat(s1, r / 14 - 0.004, 0.03), seat(s1, r / 14 + 0.004, 0.03), seat(s0, r / 14 + 0.004, 0.03)], [0, 0, 0], 33);
+      B.poly([pt(s0, o0, 0), pt(s1, o0, 0), pt(s1, o0, f), pt(s0, o0, f)], shade(sec.fascia, 0.95));   // the fascia
+    }
+    for (const a of sec.tunnels) if (a >= ch.a && a < ch.b) {   // the stair aisles and tunnel mouths
+      B.poly([seat(a - 0.6, 0, 0.04), seat(a + 0.6, 0, 0.04), seat(a + 0.6, 1, 0.04), seat(a - 0.6, 1, 0.04)], shade('#b8b4ac', 0.9));
+      B.poly([seat(a - 2.2, 0.32, 0.06), seat(a + 2.2, 0.32, 0.06), seat(a + 2.2, 0.46, 0.06), seat(a - 2.2, 0.46, 0.06)], '#1c1b1a');
+    }
+    if (!low) for (const [cs, t, col] of sec.crowd) {   // the crowd: a shirt and a head, facing the track
+      if (cs < ch.a || cs >= ch.b || sec.tunnels.some(a => Math.abs(cs - a) < 1)) continue;
+      const p = seat(cs, t, 0.02), q = seat(cs + 1, t, 0.02), L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, ux = (q[0] - p[0]) / L, uy = (q[1] - p[1]) / L;
+      const w = 0.16, z0 = p[2], z1 = z0 + 0.4, hr = 0.09, zh = z1 + hr, hx = ux * hr, hy = uy * hr;
+      B.poly([[p[0] - ux * w, p[1] - uy * w, z0], [p[0] + ux * w, p[1] + uy * w, z0], [p[0] + ux * w, p[1] + uy * w, z1], [p[0] - ux * w, p[1] - uy * w, z1]], col);
+      B.poly([[p[0] - hx, p[1] - hy, zh], [p[0] - hx * 0.5, p[1] - hy * 0.5, zh - hr], [p[0] + hx * 0.5, p[1] + hy * 0.5, zh - hr], [p[0] + hx, p[1] + hy, zh], [p[0] + hx * 0.5, p[1] + hy * 0.5, zh + hr], [p[0] - hx * 0.5, p[1] - hy * 0.5, zh + hr]], '#d9b48f');
+    }
+    for (const [s, on, dir] of [[ch.a, ch.first, 1], [ch.b, ch.last, -1]]) if (on) {
+      const next = STADIUM.sections.find(o => o !== sec && Math.abs(((dir > 0 ? o.s1 : o.s0) - s + OVAL_L * 1.5) % OVAL_L - OVAL_L / 2) < 2);
+      const gap = !next || next.h < h - 1 || next.depth < sec.depth - 2;
+      if (gap) B.poly([pt(s, o0, 0), pt(s, o0, f), pt(s, o1, h), pt(s, o1, 0)], shade('#a29e96', 0.85));
+      else B.poly([seat(s - 0.12, 0, 0.05), seat(s + 0.12, 0, 0.05), seat(s + 0.12, 1, 0.05), seat(s - 0.12, 1, 0.05)], [30, 30, 30]);
+    }
+    if (sec.roof) for (let k = 0; k < steps; k++) {   // the main grandstand's roof, on posts
+      const s0 = ch.a + k * ds, s1 = s0 + ds;
+      B.poly([pt(s0, o0 + sec.depth * 0.25, h + 5), pt(s1, o0 + sec.depth * 0.25, h + 5), pt(s1, o1 + 2, h + 6.5), pt(s0, o1 + 2, h + 6.5)], '#3a3d42');
+      if (k % 2 === 0) B.poly([seat(s0 - 0.15, 0.35), seat(s0 + 0.15, 0.35), pt(s0 + 0.15, o0 + sec.depth * 0.35, h + 5.2), pt(s0 - 0.15, o0 + sec.depth * 0.35, h + 5.2)], '#55585e');
+    }
+  }
+  for (const s of STADIUM.towers) {   // a pole, a dark head and its lamps, facing the track
+    const q = ovalPt(s, OV_STAND + 30), e = ovalPt(s + 1, OV_STAND + 30), L = Math.hypot(e[0] - q[0], e[1] - q[1]) || 1, ux = (e[0] - q[0]) / L, uy = (e[1] - q[1]) / L, nx = -uy, ny = ux;
+    const b0 = OV_BASE, t = OV_BASE + 42, Q = (u, z, o = 0) => [q[0] + ux * u + nx * o, q[1] + uy * u + ny * o, z];
+    B.obj(q[0], q[1], 900);
+    B.poly([Q(-0.4, b0), Q(0.4, b0), Q(0.4, t), Q(-0.4, t)], '#6a6d72');
+    B.poly([[q[0] - nx * 0.4, q[1] - ny * 0.4, b0], [q[0] + nx * 0.4, q[1] + ny * 0.4, b0], [q[0] + nx * 0.4, q[1] + ny * 0.4, t], [q[0] - nx * 0.4, q[1] - ny * 0.4, t]], '#6a6d72');
+    B.poly([Q(-4, t - 0.5), Q(4, t - 0.5), Q(4, t + 2.5), Q(-4, t + 2.5)], '#2a2c30');
+    for (const o of [-0.15, 0.15]) for (let i = 0; i < 4; i++) B.poly([Q(-3.6 + i * 1.9, t + 1.1, o), Q(-2.2 + i * 1.9, t + 1.1, o), Q(-2.2 + i * 1.9, t + 2.1, o), Q(-3.6 + i * 1.9, t + 2.1, o)], '#fff8dc');
+  }
+  // The scoreboard pylon, with its lit position bars
+  const pq = ovalPt(200, -60), cp = {x: pq[0], y: pq[1], hx: 1, hy: 0};
+  B.obj(pq[0], pq[1], 399);
+  B.box(cp, -1.5, 1.5, -1, 1, 0, 24, '#22252b', '#2c3038', '#22252b');
+  const pz = elev(pq[0], pq[1]);
+  for (const side of [-1.03, 1.03]) for (let i = 0; i < 6; i++) { const z = pz + 22 - i * 2.6, y = pq[1] + side; B.poly([[pq[0] - 1.2, y, z - 1.4], [pq[0] + 1.2, y, z - 1.4], [pq[0] + 1.2, y, z], [pq[0] - 1.2, y, z]], '#f0c040'); }
+}
+// Bake the map's scenery into buffers
+function glsBuild(snow, low) {
+  const gl = GLT.gl;
+  for (const c of GLS.chunks) for (const p of c.parts) { gl.deleteBuffer(p.vb); gl.deleteBuffer(p.ib); }
+  const B = glsBuilder();
+  for (const b of S.city) {
+    if (b.kind) { glsTree(B, b, snow, low); continue; }
+    // The plain block buildings: four walls standing on the ground
+    B.obj(b.cx, b.cy, low ? 150 : 260);
+    const cs = [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]];
+    cs.forEach(([x, y], k) => { const [x2, y2] = cs[(k + 1) % 4]; B.poly([[x, y, elev(x, y)], [x2, y2, elev(x2, y2)], [x2, y2, elev(x2, y2) + b.h], [x, y, elev(x, y) + b.h]], k % 2 ? b.c1 : b.c2); });
+  }
+  if (isOvalMap()) glsStadium(B, low);
+  // The towns reuse their own box drawing: drawBox and drawBoxNow hand their boxes to the builder while GLS_REC is set
+  GLS_REC = B.box;
+  if (MAP_KIND === 'suburb') {
+    for (const h of SUBURB.houses) { B.obj(h.x, h.y, low ? 140 : 300); drawHouse(h, h.col, h.roof, h.garage); }
+    B.obj(SUBURB.shop.x, SUBURB.shop.y, 399); drawShop(SUBURB.shop);
+  }
+  if (MAP_KIND === 'city') {
+    for (const b of CITY.buildings) { B.obj(b.x, b.y, low ? 200 : 399); drawOffice(b); }
+    B.obj(CITY.shop.x, CITY.shop.y, 399); drawShop(CITY.shop);
+  }
+  GLS_REC = null;
+  GLS.chunks = [...B.chunks.values()];
+  for (const c of GLS.chunks) {
+    c.objs = new Float32Array(c.objs);
+    for (const p of c.parts) {
+      const buf = new ArrayBuffer(p.n * 28), f = new Float32Array(buf), u = new Uint32Array(buf);
+      for (let i = 0, n = p.v.length; i < n; i += 7) { f[i] = p.v[i]; f[i + 1] = p.v[i + 1]; f[i + 2] = p.v[i + 2]; u[i + 3] = p.v[i + 3]; f[i + 4] = p.v[i + 4]; f[i + 5] = p.v[i + 5]; f[i + 6] = p.v[i + 6]; }
+      p.vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, p.vb); gl.bufferData(gl.ARRAY_BUFFER, buf, gl.STATIC_DRAW);
+      p.ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, p.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(p.o.concat(p.t)), gl.STATIC_DRAW);
+      p.nO = p.o.length; p.nT = p.t.length; p.v = p.o = p.t = null;
+    }
+  }
+}
+// The forest's fans move every frame, so they are written fresh: flat figures turned to face the camera, as they were
+// drawn in 2D (legs, jacket, head, hat, and near a car their raised arms and waving flags)
+function glsFans(dt) {
+  if (!FANS) FANS = buildFans();
+  const t = performance.now() / 1000, c = Math.cos(CAMYAW), s = Math.sin(CAMYAW), rx = -s, ry = c, low = LOWG(), reach = low ? 100 : 200;
+  const out = GLS.dynD || (GLS.dynD = new ArrayBuffer(4 * 1024 * 1024)), f = new Float32Array(out), u = new Uint32Array(out), maxV = f.length / 7 - 16;
+  let n = 0;
+  const objs = [];
+  for (const cl of FANS) {
+    const q = roadside(((cl.u % ROUTE_LEN) + ROUTE_LEN) % ROUTE_LEN, 0), dx = q.x - CAMX, dy = q.y - CAMY, d = Math.hypot(dx, dy);
+    if (d > reach || dx * c + dy * s < -14) continue;
+    objs.push(d);
+    for (const fan of cl.group) {
+      if (n > maxV) break;
+      const p = roadside(((fan.u % ROUTE_LEN) + ROUTE_LEN) % ROUTE_LEN, fan.side * (CFG.RW + fan.off + fan.dodge)), near = Math.hypot(p.x - S.x, p.y - S.y);
+      fan.dodge += ((near < 22 ? clamp((22 - near) / 12, 0, 1) * 2.4 : 0) - fan.dodge) * Math.min(1, dt * 4);   // jump back as a car comes
+      const excited = near < 40, bob = Math.max(0, Math.sin(t * (excited ? 9 : 2) + fan.ph)) * (excited ? 0.12 : 0.03);
+      const z = elev(p.x, p.y) + bob, H = fan.h, w = 0.42, hr = 0.11, dNear = Math.hypot(p.x - CAMX, p.y - CAMY);
+      // A polygon given as [across, up] in the figure's own plane
+      const put = (x, up, col) => { f[n * 7] = p.x + rx * x; f[n * 7 + 1] = p.y + ry * x; f[n * 7 + 2] = z + up; u[n * 7 + 3] = col; f[n * 7 + 4] = q.x; f[n * 7 + 5] = q.y; f[n * 7 + 6] = 399; n++; };
+      const pack = col => { const v = glsCol(col); return (255 << 24 | v[2] << 16 | v[1] << 8 | v[0]) >>> 0; };
+      const tri = (pts, col) => { const k = pack(col); for (let i = 1; i < pts.length - 1; i++) { put(pts[0][0], pts[0][1], k); put(pts[i][0], pts[i][1], k); put(pts[i + 1][0], pts[i + 1][1], k); } };
+      const line = (a, b, wd, col) => { const dx2 = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx2, dz) || 1, nx = -dz / L * wd / 2, nz = dx2 / L * wd / 2; tri([[a[0] + nx, a[1] + nz], [b[0] + nx, b[1] + nz], [b[0] - nx, b[1] - nz], [a[0] - nx, a[1] - nz]], col); };
+      const zj = H * 0.84, zh = zj + hr;
+      tri([[-w * 0.4, 0], [w * 0.4, 0], [w * 0.4, H * 0.47], [-w * 0.4, H * 0.47]], fan.legs);
+      tri([[-w / 2, H * 0.44], [w / 2, H * 0.44], [w / 2, zj], [-w / 2, zj]], fan.jacket);
+      tri(Array.from({length: 8}, (_, i) => [Math.cos(i * Math.PI / 4) * hr, zh + Math.sin(i * Math.PI / 4) * hr]), '#d9b48f');
+      if (fan.hat) tri([[-hr, zj + hr * 1.2], [hr, zj + hr * 1.2], [hr, zj + hr * 2.1], [-hr, zj + hr * 2.1]], fan.hat);
+      if (!low && excited && dNear < F / 3) for (const sd of [-1, 1]) line([sd * w / 2, H * 0.8], [sd * w * 0.9, H * (1.02 + bob)], 0.09, fan.jacket);
+      if (!low && fan.flag && dNear < F / 2) {
+        const sx = w * 0.9, zs = H * 1.15, wave = Math.sin(t * 6 + fan.ph) * 0.15;
+        line([sx, H * 0.7], [sx, zs], 0.04, '#6b5a44');
+        tri([[sx, zs], [sx + 0.7, zs - wave], [sx + 0.7, zs - 0.45 - wave], [sx, zs - 0.45]], fan.flag);
+      }
+    }
+  }
+  GLS.dynN = n; GLS.fanDs = objs;
+  const gl = GLT.gl;
+  gl.bindBuffer(gl.ARRAY_BUFFER, GLS.dyn); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(out, 0, n * 7), gl.DYNAMIC_DRAW);
+}
+// Is the scenery on the graphics chip this frame? (after the ground has tried, so GLT.ok is known)
+const glsOn = () => {
+  if (SETTINGS.renderer === 'classic' || GLT.ok !== true || GLS.fail) return false;
+  if (!GLS.prog) { try { glsInit(); } catch (e) { GLS.fail = true; console.warn('WebGL scenery off:', e); return false; } }
+  return true;
+};
+// Paint the frame's 2D items and the scenery together, far to near
+function glsRender(items, dt) {
+  const gl = GLT.gl, L = GLS.loc, T = GLT, low = LOWG(), snow = snowing();
+  const key = MAP_KIND + '|' + snow + '|' + low;
+  if (key !== GLS.key || GLS.city !== S.city) { glsBuild(snow, low); GLS.key = key; GLS.city = S.city; }
+  if (isForestMap() && !SHOWCASE) glsFans(dt); else { GLS.dynN = 0; GLS.fanDs = null; }
+  // The chunks in reach, and how far every object in them is (to know where a slice is needed)
+  const c = Math.cos(CAMYAW), s = Math.sin(CAMYAW), vis = [];
+  let nd = 0, ds = GLS.ds;
+  for (const ch of GLS.chunks) {
+    const dx = ch.x - CAMX, dy = ch.y - CAMY, d = Math.hypot(dx, dy);
+    if (d > ch.reach + 91 || dx * c + dy * s < -91) continue;
+    vis.push(ch);
+    const o = ch.objs;
+    if (nd + o.length / 3 > ds.length) { const bigger = new Float32Array(Math.max(ds.length * 2, nd + o.length / 3)); bigger.set(ds.subarray(0, nd)); ds = GLS.ds = bigger; }
+    for (let i = 0; i < o.length; i += 3) { const od = Math.hypot(o[i] - CAMX, o[i + 1] - CAMY); if (od <= o[i + 2]) ds[nd++] = o[i + 2] > 400 ? od + 1e6 : od; }
+  }
+  if (GLS.fanDs) { for (const d of GLS.fanDs) { if (nd >= ds.length) break; ds[nd++] = d; } }
+  const sorted = ds.subarray(0, nd).sort();
+  const below = v => { let a = 0, b = nd; while (a < b) { const m = (a + b) >> 1; if (sorted[m] < v) a = m + 1; else b = m; } return a; };
+  // One slice: only the scenery whose center lies in [near, far); the depth stays, so it still sorts with what went before
+  const P = T.pad, Wc = VW + 2 * P, Hc = VH + 2 * P;
+  gl.useProgram(GLS.prog);
+  gl.uniform3f(L.cam, CAMX, CAMY, CAMZ); gl.uniform2f(L.cs, c, s); gl.uniform1f(L.F, F); gl.uniform2f(L.ctr, P + VW / 2, P + HOR); gl.uniform2f(L.size, Wc, Hc);
+  gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.col); gl.enableVertexAttribArray(L.c);
+  const attribs = () => { gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, 28, 0); gl.vertexAttribPointer(L.col, 4, gl.UNSIGNED_BYTE, true, 28, 12); gl.vertexAttribPointer(L.c, 3, gl.FLOAT, false, 28, 16); };
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  const slice = (near, far) => {
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform2f(L.slice, near, far);
+    gl.depthMask(true);
+    for (const ch of vis) for (const p of ch.parts) {
+      if (!p.nO) continue;
+      gl.bindBuffer(gl.ARRAY_BUFFER, p.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, p.ib); attribs();
+      gl.drawElements(gl.TRIANGLES, p.nO, gl.UNSIGNED_SHORT, 0);
+    }
+    if (GLS.dynN) { gl.bindBuffer(gl.ARRAY_BUFFER, GLS.dyn); attribs(); gl.drawArrays(gl.TRIANGLES, 0, GLS.dynN); }
+    gl.depthMask(false);   // the see-through faces (the catch fence, the seat rows) after the solid ones
+    for (const ch of vis) for (const p of ch.parts) {
+      if (!p.nT) continue;
+      gl.bindBuffer(gl.ARRAY_BUFFER, p.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, p.ib); attribs();
+      gl.drawElements(gl.TRIANGLES, p.nT, gl.UNSIGNED_SHORT, p.nO * 2);
+    }
+    gl.depthMask(true);
+    ctx.drawImage(T.cv, -P, -P, Wc, Hc);
+  };
+  // Where to cut: wherever scenery lies between two neighboring 2D items, keeping at most GLS_SLICES cuts
+  const n = items.length;
+  const between = (a, b) => below(b) - below(a);
+  let thresh = 1;
+  { const counts = []; let up = 1e9; for (let i = 0; i < n; i++) { const k = between(items[i].d, up); if (k) counts.push(k); up = items[i].d; }
+    if (counts.length > GLS_SLICES) { counts.sort((a, b) => b - a); thresh = counts[GLS_SLICES - 1]; } }
+  let far = 1e9, lastD = 1e9;
+  for (let i = 0; i < n; i++) {
+    const d = items[i].d;
+    if (between(d, lastD) >= thresh && between(d, far) > 0) { slice(d, far); far = d; }
+    items[i].fn();
+    lastD = d;
+  }
+  if (nd && between(0, far) > 0) slice(0, far);
+  gl.disableVertexAttribArray(L.pos); gl.disableVertexAttribArray(L.col); gl.disableVertexAttribArray(L.c);
+  gl.disable(gl.BLEND);
 }
 // True when a hill between the camera and (x, y) hides the ground there, so objects standing on it are not drawn
 function hiddenByTerrain(x, y) {
@@ -6216,9 +6568,10 @@ function draw(dt) {
   if (MAP_KIND === 'lot') addLotItems(items, dist);
   if (isPlot()) addPlotItems(items, dist);
   if (isDirt()) addDirtItems(items, dist);
-  if (isOvalMap()) addOvalItems(items, dist);
+  const glS = glsOn();   // the trees, towns, stadium and fans are on the graphics chip (glsRender), or else painted here
+  if (isOvalMap() && !glS) addOvalItems(items, dist);
   if (MAP_KIND === 'airfield') addAirfieldItems(items, dist);
-  if (isForestMap() && !SHOWCASE) addFanItems(items, dist, dt);
+  if (isForestMap() && !SHOWCASE && !glS) addFanItems(items, dist, dt);
   if (SHOWCASE) {
     const p = SHOW_POSE();
     items.push({d: dist(p.pickup.x, p.pickup.y), fn: () => drawPosed(drawTruckModel, p.pickup.x, p.pickup.y, p.pickup.h)});
@@ -6227,10 +6580,10 @@ function draw(dt) {
   if (!SHOWCASE && RACE !== null) addRaceItems(items, dist);
   if (!SHOWCASE && EVT !== null) addEventItems(items, dist);
   if (!SHOWCASE) addExhaustItems(items, dist);
-  if (MAP_KIND === 'suburb') addSuburbItems(items, dist);
-  if (MAP_KIND === 'city') addCityItems(items, dist);
+  if (MAP_KIND === 'suburb' && !glS) addSuburbItems(items, dist);
+  if (MAP_KIND === 'city' && !glS) addCityItems(items, dist);
   const treeFar = LOWG() ? 150 : 260, cfx = Math.cos(CAMYAW), cfy = Math.sin(CAMYAW);
-  for (const b of S.city) {
+  if (!glS) for (const b of S.city) {
     if ((b.cx - CAMX) * cfx + (b.cy - CAMY) * cfy < -8) continue;   // behind the camera: never on screen
     const d = dist(b.cx, b.cy);
     if (d < treeFar && !hiddenByTerrain(b.cx, b.cy)) items.push({d, fn: () => b.kind ? drawTree(b, d) : drawBuilding(b, false)});
@@ -6241,7 +6594,7 @@ function draw(dt) {
   }
   for (const i of CFG.lights) if (!hiddenByTerrain(ROUTE[i][0], ROUTE[i][1])) items.push({d: dist(ROUTE[i][0], ROUTE[i][1]), fn: () => drawLight(i)});
   items.sort((a, b) => b.d - a.d);
-  for (const it of items) it.fn();
+  if (glS) glsRender(items, dt); else for (const it of items) it.fn();
   drawBooms();
   drawTyreSmoke();
   // Dust, then a lens vignette
