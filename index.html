@@ -2242,11 +2242,57 @@ const FOREST_ROUTE = smoothLoop([[0, 0], [140, 0], [230, -25], [268, -75], [245,
   [770, -200], [730, -160], [700, -110], [735, -70], [765, -20], [745, 25],
   [670, 45], [590, 40], [555, 62], [552, 90], [575, 110], [650, 118], [690, 140], [688, 168], [650, 185], [560, 195],
   [430, 190], [340, 150], [240, 172], [150, 205], [60, 175], [-10, 115], [-28, 45]]);
-// Midnight City: a 4 km street circuit, long boulevards with squared-off corners and a jog in the middle, four lanes wide
-// (CFG.RW 7.5). Its closest separate stretches are well over 100 m apart, for the city blocks between them.
-const NIGHT_ROUTE = smoothLoop([[0, 0], [300, 0], [600, 0], [690, 8], [720, 50], [720, 180], [735, 235], [790, 260], [900, 260], [950, 290], [960, 350], [960, 520], [930, 575], [870, 590],
-  [640, 590], [590, 570], [570, 520], [570, 420], [545, 375], [495, 360], [330, 360], [280, 380], [262, 430], [262, 560], [240, 610], [190, 625], [-60, 625], [-110, 600], [-125, 550],
-  [-125, 400], [-100, 350], [-50, 335], [60, 335], [110, 315], [125, 265], [110, 215], [60, 195], [-60, 195], [-110, 170], [-125, 120], [-120, 50], [-90, 10], [-40, 0]]);
+// Midnight City's layout. Each corner is [x, y, r, half width, height, wall]: r is the driven line's radius there (0 for a
+// point on a straight, 16 for a city corner, more for the highway's sweeps), half width the road's, height above the
+// street, wall how far past the road's edge the barrier stands (sidewalk in town, a shoulder up on the highway). City
+// corners are real intersections: the street carries straight on past a wall (see nightData). The highway section is
+// one way: a narrow ramp climbs to a raised four-lane road, a long straight and a big sweep, then a ramp back down.
+const NIGHT_PTS = [[100, 0, 0, 7.5, 0, 4.4], [750, 0, 16, 7.5, 0, 4.4], [750, 220, 16, 7.5, 0, 4.4], [560, 220, 16, 7.5, 0, 4.4], [560, 420, 16, 7.5, 0, 4.4], [1000, 420, 16, 7.5, 0, 4.4],
+  [1000, 590, 0, 7.5, 0, 4.4], [1000, 640, 0, 4.6, 0, 2.2], [1000, 780, 70, 4.6, 4.5, 2.2], [850, 780, 0, 4.6, 8, 2.2], [760, 780, 0, 7.5, 10, 2.2],
+  [-300, 780, 170, 7.5, 10, 2.2], [-300, 430, 0, 7.5, 10, 2.2], [-300, 340, 0, 4.6, 8, 2.2], [-300, 220, 60, 4.6, 3.5, 2.2], [-190, 220, 0, 4.6, 0, 2.2], [-130, 220, 0, 7.5, 0, 4.4],
+  [150, 220, 16, 7.5, 0, 4.4], [150, 100, 16, 7.5, 0, 4.4], [-50, 100, 16, 7.5, 0, 4.4], [-50, 0, 16, 7.5, 0, 4.4]];
+// The driven line (straights in 6 m pieces, curves in 1 m ones, so the road raster has no wedges on a tight corner's
+// outside) and the legs: straight strips of road with their widths and heights, what the walls and the height map use
+const { NIGHT_ROUTE, NIGHT_LEGS } = (() => {
+  const P = NIGHT_PTS, n = P.length, turn = [], route = [], legPts = [];
+  for (let i = 0; i < n; i++) {
+    const a = P[(i - 1 + n) % n], b = P[i], c = P[(i + 1) % n], ax = b[0] - a[0], ay = b[1] - a[1], cx = c[0] - b[0], cy = c[1] - b[1], la = Math.hypot(ax, ay), lc = Math.hypot(cx, cy);
+    const ux = ax / la, uy = ay / la, vx = cx / lc, vy = cy / lc, ang = Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy), t = b[2] ? b[2] * Math.tan(Math.abs(ang) / 2) : 0;
+    turn.push({ux, uy, vx, vy, ang, t, r: b[2]});
+  }
+  for (let i = 0; i < n; i++) {
+    const b = P[i], c = P[(i + 1) % n], T = turn[i], N = turn[(i + 1) % n];
+    // The straight from this corner's arc to the next one's
+    const sx = b[0] + T.vx * T.t, sy = b[1] + T.vy * T.t, ex = c[0] - N.ux * N.t, ey = c[1] - N.uy * N.t, len = Math.hypot(ex - sx, ey - sy), steps = Math.max(1, Math.round(len / 6));
+    for (let k = 0; k < steps; k++) route.push([sx + (ex - sx) * k / steps, sy + (ey - sy) * k / steps]);
+    // and the arc at the next corner
+    if (N.r) {
+      const s = Math.sign(N.ang), cx = ex - N.uy * s * N.r, cy = ey + N.ux * s * N.r, arc = Math.abs(N.ang) * N.r, m = Math.max(2, Math.round(arc));
+      const nx = ex - cx, ny = ey - cy;
+      for (let k = 0; k < m; k++) { const a = N.ang * k / m, ca = Math.cos(a), sa = Math.sin(a); route.push([cx + nx * ca - ny * sa, cy + nx * sa + ny * ca]); }
+    }
+  }
+  // The legs follow the corners; a big sweep is cut into short legs along its arc, so its walls curve
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = P[(i - 1 + n) % n], b = P[i], c = P[(i + 1) % n], T = turn[i];
+    if (T.r <= 16) { pts.push({x: b[0], y: b[1], hw: b[3], z: b[4], wall: b[5], hard: T.r > 0}); continue; }
+    const s = Math.sign(T.ang), sx = b[0] - T.ux * T.t, sy = b[1] - T.uy * T.t, cx = sx - T.uy * s * T.r, cy = sy + T.ux * s * T.r, m = Math.max(4, Math.round(Math.abs(T.ang) * T.r / 14));
+    const mx = sx - cx, my = sy - cy, Lp = Math.hypot(b[0] - a[0], b[1] - a[1]), Ln = Math.hypot(c[0] - b[0], c[1] - b[1]);
+    for (let k = 0; k <= m; k++) {
+      const q = T.ang * k / m, ca = Math.cos(q), sa = Math.sin(q), f = k / m;
+      // Height and width ramp on through the arc: from the way there to the way on
+      const mixA = 1 - T.t / Lp, mixB = T.t / Ln, g = f < 0.5 ? mixA + (1 - mixA) * f * 2 : (f - 0.5) * 2 * mixB;
+      const pa = f < 0.5 ? a : b, pb = f < 0.5 ? b : c;
+      pts.push({x: cx + mx * ca - my * sa, y: cy + mx * sa + my * ca, hw: pa[3] + (pb[3] - pa[3]) * g, z: pa[4] + (pb[4] - pa[4]) * g, wall: pa[5] + (pb[5] - pa[5]) * g, hard: false});
+    }
+  }
+  const legs = pts.map((a, i) => {
+    const b = pts[(i + 1) % pts.length], len = Math.hypot(b.x - a.x, b.y - a.y);
+    return {ax: a.x, ay: a.y, bx: b.x, by: b.y, len, dx: (b.x - a.x) / len, dy: (b.y - a.y) / len, a, b};
+  });
+  return {NIGHT_ROUTE: route, NIGHT_LEGS: legs};
+})();
 const isNightMap = () => MAP_KIND === 'night' || MAP_KIND === 'nightR';
 const isFlatMap = k => k === 'oval' || k === 'ovalR' || k === 'airfield';
 // The loose-surface maps: the dirt scramble course and the rally stage, both ways
@@ -2318,7 +2364,7 @@ function setMap(kind) {
     : kind === 'plot' ? PLOT_ROUTE : kind === 'plotR' ? reversed(PLOT_ROUTE) : kind === 'dirt' ? DIRT_ROUTE : kind === 'rally' ? RALLY_ROUTE : kind === 'rallyR' ? reversed(RALLY_ROUTE) : kind === 'forest' ? FOREST_ROUTE : kind === 'forestR' ? reversed(FOREST_ROUTE) : kind === 'oval' ? OVAL_ROUTE : kind === 'ovalR' ? reversed(OVAL_ROUTE)
     : kind === 'airfield' ? AIRFIELD_ROUTE : kind === 'pass' ? PASS_ROUTE : kind === 'passR' ? reversed(PASS_ROUTE) : CIRCUIT_ROUTE);
   DIRT_BALES.length = 0; if (isDirtMap(kind) && kind !== 'forest' && kind !== 'forestR') placeBales();   // (the forest stage has a crowd instead)
-  FANS = null; AIRF_CONES = null; NIGHT = null;
+  FANS = null; AIRF_CONES = null; NIGHT = null; NIGHT_RT = null;
   CFG.offMax = kind === 'lot' || isPlot() ? 200 : 40;   // the lot is open pavement, so it is not bogged down near the lines
   RM.d = null;
 }
@@ -2331,7 +2377,8 @@ function elev(x, y) {
   if (MAP_KIND === 'strip' || isPlot() || isFlatMap(MAP_KIND)) return 0;
   if (MAP_KIND === 'forest' || MAP_KIND === 'forestR') return 1.6 * (9 * Math.sin(x / 170 + 0.6) * Math.cos(y / 150) + 5 * Math.sin(x / 70 - y / 90 + 1.7));   // the wooded hillside
   if (MAP_KIND === 'pass' || MAP_KIND === 'passR') return 2.6 * (9 * Math.sin(x / 170 + 0.6) * Math.cos(y / 150) + 5 * Math.sin(x / 70 - y / 90 + 1.7));   // the mountains
-  if (MAP_KIND === 'city' || isNightMap()) return 0;   // downtown and Midnight City are flat
+  if (MAP_KIND === 'night' || MAP_KIND === 'nightR') return nightElev(x, y);   // flat but for the raised highway
+  if (MAP_KIND === 'city') return 0;   // downtown is flat
   if (MAP_KIND === 'suburb') return 2.5 * Math.sin(x / 130 + 0.4) * Math.cos(y / 160) + 1.2 * Math.sin((x + y) / 70);   // gentle rises
   if (MAP_KIND === 'lot') {
     // A smooth 5 m mound on the hill lane (y = 75). It eases up from 175 m to 235 m, steepest (about 12%)
@@ -2373,13 +2420,10 @@ function nearestArc(x, y) {
 // World point and direction at arc length u
 function pointAt(u) {
   u = clamp(u, 0, ROUTE_LEN);
-  for (let i = 0; i < SEGS.length; i++) {
-    const sg = SEGS[i];
-    if (u <= sg.u0 + sg.len || i === SEGS.length - 1) {
-      const s = clamp(u - sg.u0, 0, sg.len);
-      return {x: sg.ax + sg.dx * s, y: sg.ay + sg.dy * s, dx: sg.dx, dy: sg.dy};
-    }
-  }
+  let lo = 0, hi = SEGS.length - 1;   // (a binary search: it runs a lot on the long routes)
+  while (lo < hi) { const m = (lo + hi) >> 1; if (u <= SEGS[m].u0 + SEGS[m].len) hi = m; else lo = m + 1; }
+  const sg = SEGS[lo], s = clamp(u - sg.u0, 0, sg.len);
+  return {x: sg.ax + sg.dx * s, y: sg.ay + sg.dy * s, dx: sg.dx, dy: sg.dy};
 }
 // Traffic signals cycle: 5 s green, 5 s red, offset per signal so they don't all change together.
 const greenAt = i => Math.floor((S.t + i * 1.3) / 5) % 2 === 0;
@@ -5854,8 +5898,10 @@ function buildRoadMap() {
     RM.d[j * RM.w + i] = v;
   };
   const W = CFG.RW, SW = W + 2.2;
+  const nightMap = isNightMap();
   SEGS.forEach((g, idx) => {
     const rx = -g.dy, ry = g.dx;
+    const W = nightMap ? nightHw(g.u0) : CFG.RW, SW = W + 2.2;   // (Midnight City's ramps are narrower)
     for (let s = 0; s <= g.len; s += 0.2) {
       for (let o = -SW; o <= SW; o += 0.2) {
         const x = g.ax + g.dx * s + rx * o, y = g.ay + g.dy * s + ry * o;
@@ -5868,6 +5914,13 @@ function buildRoadMap() {
       }
     }
   });
+  if (nightMap) for (const q of (nightData(), NIGHT.stubs)) {   // the streets that carry on past the walls
+    const rx = -q.dy, ry = q.dx;
+    for (let s = 2; s <= q.wall + q.len; s += 0.2) for (let o = -q.hw; o <= q.hw; o += 0.2) {
+      const x = q.x + q.dx * s + rx * o, y = q.y + q.dy * s + ry * o, i = Math.floor((x - RM.ox) / RM.R), j = Math.floor((y - RM.oy) / RM.R);
+      if (i >= 0 && j >= 0 && i < RM.w && j < RM.h && RM.d[j * RM.w + i] !== 1) RM.d[j * RM.w + i] = Math.abs(o) > q.hw - 0.25 ? 3 : 1;
+    }
+  }
 }
 function surfaceAt(x, y) {
   if (MAP_KIND === 'oval' || MAP_KIND === 'ovalR') return ovalSurface(x, y);
@@ -6095,23 +6148,119 @@ const rgbS = (r, g, b) => `rgb(${r | 0},${g | 0},${b | 0})`;
 const NEON = [[255, 47, 146], [47, 230, 255], [57, 255, 122], [255, 181, 46], [164, 107, 255], [255, 59, 59], [255, 240, 90]];
 const NIGHT_WORDS = ['HOTEL', 'BAR', 'NOODLES', 'ARCADE', 'TIRES', 'MOTEL', 'DINER', 'PIZZA', 'GARAGE', 'OPEN', '24H', 'CLUB', 'TACOS', 'PAWN', 'SUSHI', 'GINOS', 'BILLS', 'NEON', 'KARAOKE', 'BOWL'];
 // A little block font for the signs: five rows of five
-const NIGHT_FONT = {A: '.###.#...#######...##...#', B: '####.#...#####.#...#####.', C: '.#####....#....#.....####', D: '####.#...##...##...#####.', E: '######....####.#....#####', G: '.#####....#..###...#.###.', H: '#...##...#######...##...#', I: '#####..#....#....#..#####', K: '#...##..#.###..#..#.#...#', L: '#....#....#....#....#####', M: '#...###.###.#.##...##...#', N: '#...###..##.#.##..###...#', O: '.###.#...##...##...#.###.', P: '####.#...#####.#....#....', R: '####.#...#####.#..#.#...#', S: '.#####.....###.....#####.', T: '#####..#....#....#....#..', U: '#...##...##...##...#.###.', W: '#...##...##.#.###.###...#', Y: '#...#.#.#...#....#....#..', 2: '####.....#.###.#....#####', 4: '#...##...######....#....#'};
+const NIGHT_FONT = {A: '.###.#...#######...##...#', B: '####.#...#####.#...#####.', C: '.#####....#....#.....####', D: '####.#...##...##...#####.', E: '######....####.#....#####', G: '.#####....#..###...#.###.', H: '#...##...#######...##...#', I: '#####..#....#....#..#####', K: '#...##..#.###..#..#.#...#', L: '#....#....#....#....#####', M: '#...###.###.#.##...##...#', N: '#...###..##.#.##..###...#', O: '.###.#...##...##...#.###.', P: '####.#...#####.#....#....', R: '####.#...#####.#..#.#...#', S: '.#####.....###.....#####.', T: '#####..#....#....#....#..', U: '#...##...##...##...#.###.', W: '#...##...##.#.###.###...#', Y: '#...#.#.#...#....#....#..', F: '######....####.#....#....', V: '#...##...##...#.#.#...#..', X: '#...#.#.#...#...#.#.#...#', 9: '.###.#...#.####....#.###.', 2: '####.....#.###.#....#####', 4: '#...##...######....#....#'};
+// The legs' road and barrier sizes at a point along one (t meters from its start)
+const legHw = (g, t) => g.a.hw + (g.b.hw - g.a.hw) * clamp(t / g.len, 0, 1);
+const legEdge = (g, t) => { const f = clamp(t / g.len, 0, 1); return g.a.hw + g.a.wall + (g.b.hw + g.b.wall - g.a.hw - g.a.wall) * f; };
+const legZ = (g, t) => g.a.z + (g.b.z - g.a.z) * clamp(t / g.len, 0, 1);
+// Is a point inside the walled road, allowing a margin m inward of the barrier? A hard corner's square is part of it.
+function nightInside(x, y, m) {
+  for (const g of NIGHT_LEGS) {
+    const t = (x - g.ax) * g.dx + (y - g.ay) * g.dy, o = (x - g.ax) * -g.dy + (y - g.ay) * g.dx, e = legEdge(g, t) - m;
+    if (Math.abs(o) > e) continue;
+    if (t >= -(g.a.hard ? e : 2) && t <= g.len + (g.b.hard ? e : 2)) return true;
+  }
+  return false;
+}
+// How far a point stands from the walled road (0 inside it), for keeping the blocks clear
+function nightClear(x, y) {
+  let best = 1e9;
+  for (const g of NIGHT_LEGS) {
+    const t = clamp((x - g.ax) * g.dx + (y - g.ay) * g.dy, 0, g.len), d = Math.hypot(g.ax + g.dx * t - x, g.ay + g.dy * t - y) - legEdge(g, t);
+    if (d < best) best = d;
+  }
+  return best;
+}
+// The height map: the raised road on a 1 m grid, falling to the street just outside its walls. Built once.
+let NIGHT_H = null;
+function nightHeights() {
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  const high = NIGHT_LEGS.filter(g => g.a.z > 0 || g.b.z > 0);
+  for (const g of high) { x0 = Math.min(x0, g.ax, g.bx); x1 = Math.max(x1, g.ax, g.bx); y0 = Math.min(y0, g.ay, g.by); y1 = Math.max(y1, g.ay, g.by); }
+  const pad = 24, H = {x0: x0 - pad, y0: y0 - pad, w: Math.ceil(x1 - x0 + pad * 2), h: Math.ceil(y1 - y0 + pad * 2)};
+  H.d = new Float32Array(H.w * H.h);
+  const near = new Float32Array(H.w * H.h).fill(1e9);
+  for (const g of high) {
+    const R = legEdge(g, 0) + 6, i0 = Math.max(0, Math.floor(Math.min(g.ax, g.bx) - R - H.x0)), i1 = Math.min(H.w - 1, Math.ceil(Math.max(g.ax, g.bx) + R - H.x0)), j0 = Math.max(0, Math.floor(Math.min(g.ay, g.by) - R - H.y0)), j1 = Math.min(H.h - 1, Math.ceil(Math.max(g.ay, g.by) + R - H.y0));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const x = H.x0 + i, y = H.y0 + j, t = clamp((x - g.ax) * g.dx + (y - g.ay) * g.dy, 0, g.len), d = Math.hypot(g.ax + g.dx * t - x, g.ay + g.dy * t - y), e = legEdge(g, t) + 0.6;
+      // The nearest leg sets the height (taking the highest would make steps where legs meet on a climb)
+      const o = j * H.w + i;
+      if (d < near[o]) { near[o] = d; H.d[o] = legZ(g, t) * (d <= e ? 1 : Math.max(0, 1 - (d - e) / 3)); }
+    }
+  }
+  return H;
+}
+function nightElev(x, y) {
+  const H = NIGHT_H || (NIGHT_H = nightHeights()), fx = x - H.x0, fy = y - H.y0, i = Math.floor(fx), j = Math.floor(fy);
+  if (i < 0 || j < 0 || i >= H.w - 1 || j >= H.h - 1) return 0;
+  const a = fx - i, b = fy - j, o = j * H.w + i, d = H.d;
+  return (d[o] * (1 - a) + d[o + 1] * a) * (1 - b) + (d[o + H.w] * (1 - a) + d[o + H.w + 1] * a) * b;
+}
+// Along the route (for this direction): the road's half width and whether it is one way, every 2 m
+let NIGHT_RT = null;
+function nightRouteInfo() {
+  const n = Math.ceil(ROUTE_LEN / 2) + 1, hw = new Float32Array(n), ow = new Uint8Array(n);
+  let s = 0;
+  for (let i = 0; i < n; i++) {
+    const u = i * 2;
+    while (s < SEGS.length - 1 && u > SEGS[s].u0 + SEGS[s].len) s++;
+    const q = SEGS[s], k = clamp(u - q.u0, 0, q.len), x = q.ax + q.dx * k, y = q.ay + q.dy * k;
+    let best = 1e9, bh = 7.5, bo = 0;
+    for (const g of NIGHT_LEGS) {
+      const t = clamp((x - g.ax) * g.dx + (y - g.ay) * g.dy, 0, g.len), d = Math.hypot(g.ax + g.dx * t - x, g.ay + g.dy * t - y);
+      if (d < best) { best = d; bh = legHw(g, t); bo = g.a.wall < 3 || g.b.wall < 3 ? 1 : 0; }
+    }
+    hw[i] = bh; ow[i] = bo;
+  }
+  let ow0 = n * 2, ow1 = 0;
+  for (let i = 0; i < n; i++) if (ow[i]) { ow0 = Math.min(ow0, i * 2); ow1 = Math.max(ow1, i * 2); }
+  NIGHT_RT = {hw, ow, ow0, ow1};
+  return NIGHT_RT;
+}
+const nightHw = u => { const R = NIGHT_RT || nightRouteInfo(); return R.hw[Math.floor((((u % ROUTE_LEN) + ROUTE_LEN) % ROUTE_LEN) / 2)] || 7.5; };
+const nightOneWay = u => { const R = NIGHT_RT || nightRouteInfo(); return !!R.ow[Math.floor((((u % ROUTE_LEN) + ROUTE_LEN) % ROUTE_LEN) / 2)]; };
 function nightData() {
   if (NIGHT) return NIGHT;
-  const rnd = seeded(1977), W = CFG.RW, L = ROUTE_LEN, buildings = [], lamps = [], signs = [], barrier = [];
-  // A block: its footprint must clear the road and every other block
-  const free = (x, y, hx, hy, w, d) => {
-    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [0, 1], [-1, 0], [1, 0], [0, 0]]) if (distToRoad(x + hx * a * w / 2 - hy * b * d / 2, y + hy * a * w / 2 + hx * b * d / 2) < W + 5.6) return false;
+  const rnd = seeded(1977), L = ROUTE_LEN, buildings = [], lamps = [], signs = [], barrier = [], stubs = [], crossings = [], blinkers = [], rwalls = [], props = [];
+  // The streets that carry on past the walls: straight on at every city corner, and side streets along the long straights
+  const stub = (x, y, dx, dy, hw, wall) => {
+    let len = 70;
+    for (let s = 12; s <= 70; s += 6) if (nightClear(x + dx * (wall + s), y + dy * (wall + s)) < 3) { len = s - 8; break; }
+    if (len < 16) return;
+    stubs.push({x, y, dx, dy, hw, len, wall});
+  };
+  for (let i = 0; i < NIGHT_LEGS.length; i++) {
+    const g = NIGHT_LEGS[i], next = NIGHT_LEGS[(i + 1) % NIGHT_LEGS.length];
+    if (g.b.hard) { stub(g.bx, g.by, g.dx, g.dy, g.b.hw, g.b.hw + g.b.wall); stub(g.bx, g.by, -next.dx, -next.dy, g.b.hw, g.b.hw + g.b.wall); crossings.push({x: g.bx, y: g.by, dx: g.dx, dy: g.dy, hw: g.b.hw, back: g.b.hw + 3}, {x: g.bx, y: g.by, dx: next.dx, dy: next.dy, hw: g.b.hw, back: -g.b.hw - 3}); }
+    if (g.a.z === 0 && g.b.z === 0 && g.a.wall > 3 && g.b.wall > 3 && g.a.hw === g.b.hw && g.len > 150) {
+      for (let t = 90 + rnd() * 30; t < g.len - 70; t += 130 + rnd() * 70) {
+        const x = g.ax + g.dx * t, y = g.ay + g.dy * t, e = legEdge(g, t);
+        stub(x, y, -g.dy, g.dx, 6, e); stub(x, y, g.dy, -g.dx, 6, e);
+        crossings.push({x, y, dx: g.dx, dy: g.dy, hw: g.a.hw, back: 9}, {x, y, dx: g.dx, dy: g.dy, hw: g.a.hw, back: -9});
+      }
+    }
+  }
+  const inStub = (x, y, m) => stubs.some(q => { const t = (x - q.x) * q.dx + (y - q.y) * q.dy, o = (x - q.x) * -q.dy + (y - q.y) * q.dx; return t > 0 && t < q.wall + q.len + m && Math.abs(o) < q.hw + m; });
+  // A block: its footprint must clear the walled road, the side streets and every other block
+  const free = (x, y, hx, hy, w, d, far) => {
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [0, 1], [-1, 0], [1, 0], [0, 0]]) {
+      const qx = x + hx * a * w / 2 - hy * b * d / 2, qy = y + hy * a * w / 2 + hx * b * d / 2;
+      if (nightClear(qx, qy) < (nightElev(qx, qy) > 0 || far ? 7 : 1.6) || inStub(qx, qy, 2.5)) return false;
+    }
     const r = Math.hypot(w, d) / 2 * 0.85;
     return !buildings.some(o => Math.hypot(o.x - x, o.y - y) < r + o.r);
   };
-  const place = (u, side, off, w, d, h, reach) => {
-    const p = roadside(((u + w / 2) % L + L) % L, side * off);
-    if (!free(p.x, p.y, p.dx, p.dy, w, d)) return false;
+  const blockAt = (x, y, hx, hy, s, w, d, h, reach, far) => {
+    if (!free(x, y, hx, hy, w, d, far)) return null;
     const v = 22 + rnd() * 20, tintB = rnd() * 12;
-    const b = {x: p.x, y: p.y, hx: p.dx, hy: p.dy, s: -side, w, d, h, reach, r: Math.hypot(w, d) / 2 * 0.85, side: rgbS(v, v, v + 8 + tintB), top: rgbS(v * 0.6, v * 0.6, v * 0.7 + 4), end: rgbS(v * 0.8, v * 0.8, v * 0.9 + 6), decor: []};
+    const b = {x, y, hx, hy, s, w, d, h, reach, r: Math.hypot(w, d) / 2 * 0.85, side: rgbS(v, v, v + 8 + tintB), top: rgbS(v * 0.6, v * 0.6, v * 0.7 + 4), end: rgbS(v * 0.8, v * 0.8, v * 0.9 + 6), decor: []};
     buildings.push(b);
     return b;
+  };
+  const place = (u, side, off, w, d, h, reach) => {
+    const p = roadside(((u + w / 2) % L + L) % L, side * off);
+    return blockAt(p.x, p.y, p.dx, p.dy, -side, w, d, h, reach);
   };
   const decorate = (b, front) => {
     const rx = -b.hy, ry = b.hx, faces = [
@@ -6167,29 +6316,89 @@ function nightData() {
       signs.push({x: q[0], y: q[1], z: sz, col: n, r: sr, bx: b.x, by: b.y});
     }
   };
-  // The front rows along both sides of the road, then taller towers behind for the skyline
+  // The front rows along both sides of the road, then taller towers behind, and more filling the big block in the middle
   for (const side of [-1, 1]) {
     for (let u = 0; u < L;) {
-      const w = 16 + rnd() * 30, d = 14 + rnd() * 18, h = 11 + Math.pow(rnd(), 1.7) * 72, b = place(u, side, W + 6.2 + d / 2, w, d, h, 399);
-      if (b) decorate(b, true);
+      const w = 16 + rnd() * 30, d = 14 + rnd() * 18, h = 11 + Math.pow(rnd(), 1.7) * 72, hw = nightHw(u), high = nightOneWay(u), b = place(u, side, hw + (high ? 15 : 7.2) + d / 2, w, d, h, 399);
+      if (b) decorate(b, !high);
       u += (b ? w + 0.8 : 7);
     }
     for (let u = 8; u < L;) {
-      const w = 20 + rnd() * 24, d = 20 + rnd() * 22, b = place(u, side, W + 44 + d / 2 + rnd() * 40, w, d, 26 + Math.pow(rnd(), 1.3) * 110, 800);
+      const w = 20 + rnd() * 24, d = 20 + rnd() * 22, b = place(u, side, nightHw(u) + 44 + d / 2 + rnd() * 40, w, d, 26 + Math.pow(rnd(), 1.3) * 110, 800);
       if (b) decorate(b, false);
       u += (b ? w + 12 : 9);
     }
   }
-  // The barriers, and the street lamps behind them with an arm reaching over the road
-  for (const side of [-1, 1]) for (let u = 0; u < L; u += 9) {
-    const p = roadside(u, side * (W + 4.4));
-    if (distToRoad(p.x, p.y) > W + 3.9) barrier.push({x: p.x, y: p.y, hx: p.dx, hy: p.dy, hazard: Math.floor(u / 9) % 8 === 0});
+  for (let k = 0; k < 500 && buildings.length < 460; k++) {
+    const w = 22 + rnd() * 26, d = 22 + rnd() * 26, b = blockAt(-280 + rnd() * 1300, -60 + rnd() * 860, 1, 0, rnd() < 0.5 ? 1 : -1, w, d, 24 + Math.pow(rnd(), 1.4) * 120, 800, true);
+    if (b) decorate(b, false);
   }
+  // The barriers: a straight line down each side of every leg, meeting the next leg's at the corner (square at a city
+  // corner, across the street that carries on, in hazard yellow there). Up on the highway a sheer wall drops to the street.
+  const legs = NIGHT_LEGS, nL = legs.length;
+  const cross = (g, h, side) => {   // where this leg's barrier line meets the next leg's
+    const ea = legEdge(g, g.len) * side, eb = legEdge(h, 0) * side, ax = g.bx - g.dy * ea, ay = g.by + g.dx * ea, bx = h.ax - h.dy * eb, by = h.ay + h.dx * eb, den = g.dx * h.dy - g.dy * h.dx;
+    if (Math.abs(den) < 0.05) return [(ax + bx) / 2, (ay + by) / 2];
+    const t = ((bx - ax) * h.dy - (by - ay) * h.dx) / den;
+    return [ax + g.dx * t, ay + g.dy * t];
+  };
+  for (let i = 0; i < nL; i++) {
+    const g = legs[i], prev = legs[(i - 1 + nL) % nL], next = legs[(i + 1) % nL];
+    for (const side of [-1, 1]) {
+      const a = cross(prev, g, side), b = cross(g, next, side), len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (len < 0.5) continue;
+      const dx = (b[0] - a[0]) / len, dy = (b[1] - a[1]) / len, n = Math.max(1, Math.round(len / 9)), high = g.a.z > 0 || g.b.z > 0, nx = -g.dy * side, ny = g.dx * side;
+      for (let k = 0; k < n; k++) {
+        const f = (k + 0.5) / n, x = a[0] + (b[0] - a[0]) * f, y = a[1] + (b[1] - a[1]) * f;
+        if (nightInside(x, y, 0.6)) continue;   // (inside another leg's road: a corner's inner end)
+        const hazard = inStub(x - nx, y - ny, 1.5) || inStub(x + nx * 2, y + ny * 2, 1);
+        barrier.push({x, y, hx: dx, hy: dy, half: len / n / 2 + 0.05, hazard});
+        if (hazard && k % 2 === 0) blinkers.push({x, y, ph: rnd() * 2});
+        if (high) {   // the retaining wall under the barrier, down to the street
+          const hl = len / n / 2, wx = x + nx * 0.62, wy = y + ny * 0.62, x0 = wx - dx * hl, y0 = wy - dy * hl, x1 = wx + dx * hl, y1 = wy + dy * hl;
+          rwalls.push({x, y, p: [[x0, y0, 0], [x1, y1, 0], [x1, y1, nightElev(x1 - nx, y1 - ny)], [x0, y0, nightElev(x0 - nx, y0 - ny)]]});
+        }
+      }
+    }
+  }
+  // The street lamps stand behind the barriers, every 36 m, with an arm reaching over the road; none on a corner's arc
   for (let u = 6, k = 0; u < L; u += 36, k++) {
-    const side = k % 2 ? 1 : -1, p = roadside(u, side * (W + 5.0));
-    if (distToRoad(p.x, p.y) < W + 4.4) continue;
-    lamps.push({x: p.x, y: p.y, hx: p.dx, hy: p.dy, side, lx: p.x - p.rx * side * 3.6, ly: p.y - p.ry * side * 3.6});
+    const side = k % 2 ? 1 : -1, q = pointAt(u), hw = nightHw(u);
+    let e = hw + 4.4;
+    for (const g of legs) { const t = clamp((q.x - g.ax) * g.dx + (q.y - g.ay) * g.dy, 0, g.len); if (Math.hypot(g.ax + g.dx * t - q.x, g.ay + g.dy * t - q.y) < 1) e = legEdge(g, t); }
+    const p = roadside(u, side * (e + 0.6));
+    if (nightInside(p.x, p.y, 0)) continue;
+    const reach = Math.min(3.6, hw * 0.55);
+    lamps.push({x: p.x, y: p.y, hx: p.dx, hy: p.dy, side, reach, lx: p.x - p.rx * side * reach, ly: p.y - p.ry * side * reach, z: nightElev(p.x - p.rx * side, p.y - p.ry * side) + 9.0});
   }
+  // Flashing amber signals over the closed-off corners
+  for (const q of crossings) if (q.back > 0 && q.hw > 7) {
+    const sx = q.x - q.dx * q.back - q.dy * (q.hw + 2.6), sy = q.y - q.dy * q.back + q.dx * (q.hw + 2.6);
+    if (nightInside(sx, sy, 0)) props.push({x: sx, y: sy, boxes: [[{x: sx, y: sy, hx: q.dx, hy: q.dy}, -0.1, 0.1, -0.1, 0.1, 0, 5.2, 'rgb(36,38,44)', 'rgb(36,38,44)', 'rgb(28,30,36)'], [{x: sx, y: sy, hx: q.dx, hy: q.dy}, -0.2, 0.2, -0.22, 0.22, 4.4, 5.4, 'rgb(24,24,28)', 'rgb(30,30,34)', 'rgb(24,24,28)']], polys: []}), blinkers.push({x: sx - q.dx * 0.3, y: sy - q.dy * 0.3, z: 5, ph: rnd() * 2, big: true});
+  }
+  // Green signs on gantries over the road: the highway's way on, and the way off
+  const gantry = (x, y, dx, dy, hw, words) => {
+    const nx = -dy, ny = dx, base = nightElev(x, y), top = base + 6.6, polys = [], cp = {x, y, hx: dx, hy: dy};
+    const boxes = [-1, 1].map(s => [{x: x + nx * s * (hw + 1.3), y: y + ny * s * (hw + 1.3), hx: dx, hy: dy}, -0.16, 0.16, -0.16, 0.16, 0, 7.8, 'rgb(62,64,70)', 'rgb(62,64,70)', 'rgb(48,50,56)']);
+    boxes.push([cp, -0.14, 0.14, -hw - 1.3, hw + 1.3, 7, 7.3, 'rgb(62,64,70)', 'rgb(62,64,70)', 'rgb(48,50,56)']);
+    for (const face of [-1, 1]) {
+      // Viewed from either way along the road, with its letters reading left to right
+      const rx = nx * -face, ry = ny * -face, P = (a, z) => [x + rx * a + dx * face * 0.18, y + ry * a + dy * face * 0.18, z];
+      const add = (a0, a1, z0, z1, col) => polys.push({pts: [P(a0, z0), P(a1, z0), P(a1, z1), P(a0, z1)], col, nx: dx * face, ny: dy * face});
+      const c = 0.27, wd = words.length * 6 * c;
+      add(-wd / 2 - 0.5, wd / 2 + 0.3, top - 0.55, top + 2.25 - 0.55, 'rgb(14,84,52)');
+      [...words].forEach((ch, k) => {
+        const g = NIGHT_FONT[ch];
+        if (!g) return;
+        const a0 = -wd / 2 + k * 6 * c, z1 = top + 1.2;
+        for (let row = 0; row < 5; row++) for (let i = 0; i < 5; i++) if (g[row * 5 + i] === '#') polys.push({pts: [[a0 + i * c, z1 - (row + 1) * c], [a0 + (i + 1) * c, z1 - (row + 1) * c], [a0 + (i + 1) * c, z1 - row * c], [a0 + i * c, z1 - row * c]].map(([a, z]) => { const q = P(a, z); return [q[0] + dx * face * 0.04, q[1] + dy * face * 0.04, q[2]]; }), col: 'rgb(226,236,226)', nx: dx * face, ny: dy * face});
+      });
+    }
+    props.push({x, y, boxes, polys, abs: true});
+  };
+  const R = NIGHT_RT || nightRouteInfo();
+  const signAt = (u, words) => { const q = pointAt(((u % L) + L) % L); gantry(q.x, q.y, q.dx, q.dy, nightHw(u), words); };
+  signAt(R.ow0 - 120, 'HIGHWAY 9'); signAt(R.ow0 - 30, 'ON RAMP'); signAt((R.ow0 + R.ow1) / 2, 'CITY 9'); signAt(R.ow1 - 240, 'EXIT AHEAD'); signAt(R.ow1 - 90, 'EXIT');
   // The ground's light: lamp and neon pools on a 2 m grid
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   for (const g of SEGS) { x0 = Math.min(x0, g.ax); x1 = Math.max(x1, g.ax); y0 = Math.min(y0, g.ay); y1 = Math.max(y1, g.ay); }
@@ -6206,7 +6415,7 @@ function nightData() {
   };
   for (const l of lamps) pool(l.lx, l.ly, 17, 1.05, 0.74, 0.42);
   for (const s of signs) pool(s.x, s.y, 7 + s.r, s.col[0] / 255 * 0.7, s.col[1] / 255 * 0.7, s.col[2] / 255 * 0.7);
-  NIGHT = {buildings, lamps, signs, barrier, G};
+  NIGHT = {buildings, lamps, signs, barrier, G, stubs, crossings, blinkers, rwalls, props};
   return NIGHT;
 }
 // The light on the ground at a point, bilinear on the grid, into NL
@@ -6295,8 +6504,17 @@ function drawNightGround() {
   for (let u = u0 - reach; u < u0 + reach; u += 3) {
     const q = roadside(((u % L) + L) % L, 0);
     if ((q.x - CAMX) * c + (q.y - CAMY) * s < -6) continue;
-    for (const o of [-0.2, 0.2]) polyFill([pt(u, o - 0.06), pt(u, o + 0.06), pt(u + 3.1, o + 0.06), pt(u + 3.1, o - 0.06)], 'rgb(150,118,40)');
-    if ((((u % 12) + 12) % 12) === 0) for (const o of [-3.75, 3.75]) polyFill([pt(u, o - 0.07), pt(u, o + 0.07), pt(u + 4, o + 0.07), pt(u + 4, o - 0.07)], 'rgb(112,112,118)');
+    const oneWay = nightOneWay(u), hw = nightHw(u);
+    if (!oneWay) for (const o of [-0.2, 0.2]) polyFill([pt(u, o - 0.06), pt(u, o + 0.06), pt(u + 3.1, o + 0.06), pt(u + 3.1, o - 0.06)], 'rgb(150,118,40)');
+    else if (hw > 6 && (((u % 12) + 12) % 12) === 0) polyFill([pt(u, -0.07), pt(u, 0.07), pt(u + 4, 0.07), pt(u + 4, -0.07)], 'rgb(112,112,118)');
+    if ((((u % 12) + 12) % 12) === 0 && hw > 6) for (const o of [-3.75, 3.75]) polyFill([pt(u, o - 0.07), pt(u, o + 0.07), pt(u + 4, o + 0.07), pt(u + 4, o - 0.07)], 'rgb(112,112,118)');
+  }
+  // Crosswalks where the streets meet
+  for (const q of D.crossings) {
+    const mx = q.x - q.dx * q.back, my = q.y - q.dy * q.back;
+    if (Math.hypot(mx - CAMX, my - CAMY) > 110 || (mx - CAMX) * c + (my - CAMY) * s < -8) continue;
+    const rx = -q.dy, ry = q.dx, Z = (al, o) => proj(mx + q.dx * al + rx * o, my + q.dy * al + ry * o, 0.015);
+    for (let o = -q.hw + 0.6; o < q.hw - 0.8; o += 1.9) polyFill([Z(-1.5, o), Z(-1.5, o + 0.9), Z(1.5, o + 0.9), Z(1.5, o)], 'rgb(118,118,122)');
   }
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
   const streak = (x, y, h, rad, r, g, b, alpha) => {
@@ -6314,10 +6532,13 @@ function drawNightGround() {
   ctx.globalAlpha = 1;
   const beam = (x, y, h, front, wide, power) => {
     const cc = Math.cos(h), sn = Math.sin(h), at = (u, v) => proj(x + cc * u - sn * v, y + sn * u + cc * v, 0.02);
-    for (const [u0, u1, w0, w1, al] of [[front, front + 10, wide, wide + 1.6, 0.07], [front, front + 18, wide, wide + 2.8, 0.06], [front + 1, front + 28, wide, wide + 4, 0.05], [front + 3, front + 40, wide + 0.3, wide + 6, 0.04]]) {
-      const q = [at(u0, -w0), at(u0, w0), at(u1, w1), at(u1, -w1)];
+    // Two soft wedges of light, each fading out along its length (flat layers showed as steps)
+    for (const [len, w1, al] of [[26, wide + 3.2, 0.2], [44, wide + 6.5, 0.09]]) {
+      const q = [at(front, -wide), at(front, wide), at(front + len, w1), at(front + len, -w1)];
       if (q.some(p => !p)) continue;
-      polyFill(q, `rgba(255,232,186,${al * power})`);
+      const g = ctx.createLinearGradient(0, (q[0][1] + q[1][1]) / 2, 0, (q[2][1] + q[3][1]) / 2);
+      g.addColorStop(0, `rgba(255,232,186,${al * power})`); g.addColorStop(0.6, `rgba(255,232,186,${al * power * 0.45})`); g.addColorStop(1, 'rgba(255,232,186,0)');
+      polyFill(q, g);
     }
   };
   if (!SHOWCASE) {
@@ -6358,23 +6579,32 @@ function addNightItems(items, dist, glS) {
   }
   for (const q of D.barrier) {
     const d = dist(q.x, q.y);
-    if (d < 70 && front(q.x, q.y, 6)) items.push({d, fn: () => nightBarrier(q)});
+    if (d < 90 && front(q.x, q.y, 6)) items.push({d, fn: () => nightBarrier(q)});
   }
   for (const l of D.lamps) {
     const d = dist(l.x, l.y);
-    if (d < 190 && front(l.x, l.y, 6)) items.push({d, fn: () => { nightLamp(l, drawBox); const p = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'lighter'; drawGlow(l.lx, l.ly, 9.0, 2.4, 255, 206, 140); ctx.globalCompositeOperation = p; }});
+    if (d < 190 && front(l.x, l.y, 6)) items.push({d, fn: () => { nightLamp(l, drawBox); const p = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'lighter'; drawGlow(l.lx, l.ly, 9.0 + l.z - 9 - elev(l.lx, l.ly), 2.4, 255, 206, 140); ctx.globalCompositeOperation = p; }});
   }
+  for (const w of D.rwalls) {
+    const d = dist(w.x, w.y);
+    if (d < 200 && front(w.x, w.y, 8)) items.push({d: d + 2, fn: () => polyFill(w.p.map(p => projZ(p[0], p[1], p[2])), 'rgb(44,44,52)')});
+  }
+  for (const g of D.props) {
+    const d = dist(g.x, g.y);
+    if (d < 240 && front(g.x, g.y, 8)) items.push({d, fn: () => { for (const b of g.boxes) drawBox(...b, null); for (const q of g.polys) if ((CAMX - q.pts[0][0]) * q.nx + (CAMY - q.pts[0][1]) * q.ny > 0) polyFill(q.pts.map(p => projZ(p[0], p[1], p[2])), q.col); }});
+  }
+  const flash = Math.floor(performance.now() / 500);
+  for (const b of D.blinkers) if (dist(b.x, b.y) < 160 && front(b.x, b.y, 6) && (flash + Math.floor(b.ph)) % 2) items.push({d: dist(b.x, b.y) - 0.5, fn: () => { const p = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'lighter'; drawGlow(b.x, b.y, b.z || 1.25, b.big ? 1.4 : 0.8, 255, 170, 30); ctx.globalCompositeOperation = p; }});
 }
 function nightBarrier(q, box = drawBox) {
   const cp = {x: q.x, y: q.y, hx: q.hx, hy: q.hy};
-  box(cp, -4.6, 4.6, -0.28, 0.28, 0, 0.85, q.hazard ? 'rgb(120,104,44)' : 'rgb(56,56,62)', q.hazard ? 'rgb(150,130,56)' : 'rgb(72,72,78)', 'rgb(42,42,48)', null);
+  box(cp, -q.half, q.half, -0.28, 0.28, 0, 1.05, q.hazard ? 'rgb(150,124,40)' : 'rgb(60,60,66)', q.hazard ? 'rgb(180,150,50)' : 'rgb(78,78,84)', 'rgb(44,44,50)', null);
 }
 function nightLamp(l, box = drawBox) {
-  const cp = {x: l.x, y: l.y, hx: l.hx, hy: l.hy}, s = l.side;   // (the arm reaches back over the road, toward -side)
-  box(cp, -0.1, 0.1, -0.1, 0.1, 0, 9.3, 'rgb(40,42,50)', 'rgb(40,42,50)', 'rgb(30,32,40)', null);
-  box(cp, -0.06, 0.06, Math.min(0, -s * 3.9), Math.max(0, -s * 3.9), 9.2, 9.32, 'rgb(40,42,50)', 'rgb(40,42,50)', 'rgb(30,32,40)', null);
-  const m = -s * 3.6;
-  box(cp, -0.3, 0.3, m - 0.2, m + 0.2, 9.02, 9.2, 'rgb(255,226,170)', 'rgb(48,48,54)', 'rgb(255,226,170)', null);
+  const cp = {x: l.x, y: l.y, hx: l.hx, hy: l.hy}, s = l.side, dz = l.z - 9 - elev(l.x, l.y), m = -s * l.reach;   // (the arm reaches back over the road; up on the highway the pole stands on the wall)
+  box(cp, -0.1, 0.1, -0.1, 0.1, 0, 9.3 + dz, 'rgb(40,42,50)', 'rgb(40,42,50)', 'rgb(30,32,40)', null);
+  box(cp, -0.06, 0.06, Math.min(0, m * 1.08), Math.max(0, m * 1.08), 9.2 + dz, 9.32 + dz, 'rgb(40,42,50)', 'rgb(40,42,50)', 'rgb(30,32,40)', null);
+  box(cp, -0.3, 0.3, m - 0.2, m + 0.2, 9.02 + dz, 9.2 + dz, 'rgb(255,226,170)', 'rgb(48,48,54)', 'rgb(255,226,170)', null);
 }
 /* The traffic: dumb cars cruising both ways round the loop, keeping right. They do not look at anything but the bumper
    right in front of them: they change lanes when they feel like it (with a late blinker, none, or the wrong one), crawl
@@ -6387,21 +6617,22 @@ function makeNightTraffic() {
   const paints = PAINTS.filter(p => p[1]).map(p => p[1]);
   for (let i = 0; i < n; i++) {
     const dir = i % 2 ? 1 : -1, lane = dir * (Math.random() < 0.55 ? 1.9 : 5.6), body = bodies[Math.floor(Math.random() * bodies.length)];
-    // (spread round the loop, but clear of the start line)
-    const u = 90 + (L - 220) * (i + Math.random() * 0.8) / n;
+    // (spread round the loop, but clear of the start line, and oncoming cars never on the one-way highway)
+    let u = 90 + (L - 220) * (i + Math.random() * 0.8) / n;
+    if (dir < 0 && nightOneWay(u)) { const R = NIGHT_RT; u = R.ow0 - 30 - Math.random() * 700; if (u < 90) u = R.ow1 + 30 + Math.random() * 100; }
     cars.push({u, dir, lat: lane, laneT: lane, home: lane, v: 9, vPrev: 9, cruise: 9 + Math.random() * 8, vT: 12, body, paint: Math.random() < 0.45 ? CARS[body].paint || paints[0] : paints[Math.floor(Math.random() * paints.length)], ev: 1 + Math.random() * 10, modeT: 0, blink: 0, blinkT: 0, latV: 0, wob: Math.random() * 6, hit: 0, wreck: null, d: 999});
   }
   return cars;
 }
 const wrapGap = (a, L) => { const g = ((a % L) + L) % L; return g > L / 2 ? g - L : g; };
 function trafficWhim(t) {
-  const r = Math.random(), other = t.dir * (Math.abs(t.laneT) < 3 ? 5.6 : 1.9);
+  const r = Math.random(), other = t.dir * (Math.abs(t.laneT) < 3 ? 5.6 : 1.9), ow = nightOneWay(t.u);
   if (r < 0.42) {   // a lane change, with hardly any warning
-    t.laneT = Math.random() < 0.14 ? -t.dir * 1.9 : other;   // (sometimes straight over the center line)
-    t.home = Math.sign(t.laneT) === t.dir ? t.laneT : t.home;
+    t.laneT = ow ? NIGHT_LANES[Math.floor(Math.random() * 4)] : Math.random() < 0.14 ? -t.dir * 1.9 : other;   // (in town, sometimes straight over the center line)
+    t.home = !ow && Math.sign(t.laneT) === t.dir ? t.laneT : t.home;
     const wanted = Math.sign((t.laneT - t.lat) * t.dir) || 1, q = Math.random();
     t.blink = q < 0.45 ? wanted : q < 0.7 ? -wanted : 0; t.blinkT = 1.6;
-    if (Math.sign(t.laneT) !== t.dir) t.modeT = 2.5 + Math.random() * 2;
+    if (!ow && Math.sign(t.laneT) !== t.dir) t.modeT = 2.5 + Math.random() * 2;
   } else if (r < 0.6) { t.vT = 3 + Math.random() * 4; t.modeT = 3 + Math.random() * 3; }   // crawling, for no reason
   else if (r < 0.72) { t.vT = 0; t.modeT = 1.2 + Math.random() * 2; }                      // stops dead
   else if (r < 0.86) { t.vT = t.cruise + 7; t.modeT = 3 + Math.random() * 3; }              // suddenly in a hurry
@@ -6423,17 +6654,20 @@ function trafficStep(dt) {
     t.vPrev = t.v;
     if (t.wreck) {   // spinning off, then gone; another driver takes its place far from you
       const w = t.wreck, k = Math.max(0, 1 - 1.6 * dt);
-      t.x += w.vx * dt; t.y += w.vy * dt; t.h += w.spin * dt; w.vx *= k; w.vy *= k; w.spin *= k; w.t -= dt;
+      if (nightInside(t.x + w.vx * dt, t.y + w.vy * dt, 1)) { t.x += w.vx * dt; t.y += w.vy * dt; } else { w.vx *= -0.3; w.vy *= -0.3; }   // (the barriers stop it)
+      t.h += w.spin * dt; w.vx *= k; w.vy *= k; w.spin *= k; w.t -= dt;
       if (w.t <= 0) {
         t.wreck = null; t.v = t.cruise; t.vT = t.cruise; t.modeT = 0; t.laneT = t.lat = t.home; t.latV = 0;
-        t.u = (nearestArc(S.x, S.y) + L * (0.3 + Math.random() * 0.4)) % L; trafficPose(t);
+        t.u = (nearestArc(S.x, S.y) + L * (0.3 + Math.random() * 0.4)) % L;
+        if (t.dir < 0 && nightOneWay(t.u)) t.u = (NIGHT_RT.ow0 - 40 + L) % L;
+        trafficPose(t);
       }
       continue;
     }
     if (held) { if (t.x === undefined) trafficPose(t); continue; }
     t.hit = Math.max(0, t.hit - dt); t.blinkT = Math.max(0, t.blinkT - dt);
     t.ev -= dt; if (t.ev <= 0) trafficWhim(t);
-    if (t.modeT > 0) { t.modeT -= dt; if (t.modeT <= 0) { t.vT = t.cruise; if (Math.sign(t.laneT) !== t.dir) t.laneT = t.home; } } else t.vT = t.cruise;
+    if (t.modeT > 0) { t.modeT -= dt; if (t.modeT <= 0) { t.vT = t.cruise; if (!nightOneWay(t.u) && Math.sign(t.laneT) !== t.dir) t.laneT = t.home; } } else t.vT = nightOneWay(t.u) ? t.cruise + 9 : t.cruise;
     // The one thing it does watch: the bumper right in front of it
     let want = t.vT;
     for (const o of S.ntr) {
@@ -6441,9 +6675,17 @@ function trafficStep(dt) {
       const g = wrapGap((o.u - t.u) * t.dir, L);
       if (g > 0 && g < 11) want = Math.min(want, o.v * (g < 7 ? 0.5 : 1));
     }
+    // The highway is one way: an oncoming car turns off at its end (held there until you are clear) and comes back on the
+    // far side. Coming off it, a car goes back to the right-hand lanes; on a ramp they all squeeze in.
+    const ow = nightOneWay(t.u), hwNow = Math.min(nightHw(t.u), nightHw(t.u + t.dir * 25));
+    if (t.dir < 0 && nightOneWay(t.u - 6)) {
+      want = 0;
+      if (Math.hypot(t.x - S.x, t.y - S.y) > 110) { t.u = (NIGHT_RT.ow0 - 8 + L) % L; t.lat = t.laneT = t.home; t.v = t.cruise; trafficPose(t); continue; }
+    }
+    if (!ow && t.dir > 0 && t.laneT < 0 && t.modeT <= 0) t.laneT = t.home > 0 ? t.home : 1.9;
     t.v = approach(t.v, want, (want < t.v ? 7 : 2.6) * dt);
     t.wob += dt;
-    const target = t.laneT + Math.sin(t.wob * 0.7) * 0.35, lv = clamp((target - t.lat) * 1.3, -2.8, 2.8);
+    const target = clamp(t.laneT, -hwNow + 1.6, hwNow - 1.6) + Math.sin(t.wob * 0.7) * 0.35, lv = clamp((target - t.lat) * 1.3, -2.8, 2.8);
     t.latV = approach(t.latV, t.v > 0.5 ? lv : 0, 7 * dt);
     t.lat += t.latV * dt;
     t.u = (t.u + t.dir * t.v * dt + L) % L;
@@ -6486,7 +6728,7 @@ function trafficStep(dt) {
 // nowhere to go it stands on the brakes. Sets ai.panic for aiStep.
 function nightAi(ai, v, dt) {
   ai.dT = (ai.dT || 0) - dt;
-  const L = RX.L, lim = CFG.RW - 1.2;
+  const L = RX.L, roomy = Math.min(nightHw(ai.u), nightHw(ai.u + 12 + v)), lim = roomy - 1.2, own = !nightOneWay(ai.u);
   if (ai.dT <= 0) {
     ai.dT = 0.1;
     const look = 14 + v * (1.1 + (ai.skill || 0.8)), obs = [];
@@ -6506,11 +6748,12 @@ function nightAi(ai, v, dt) {
       return best;
     };
     const mine = ttcFor(ai.lat);
-    if (mine > 3 && Math.abs(ai.latT - ai.lat) < 0.4) { ai.latT = ai.lat; ai.panic = false; }
+    if (mine > 3 && Math.abs(ai.latT - ai.lat) < 0.4 && Math.abs(ai.lat) <= lim) { ai.latT = ai.lat; ai.panic = false; }
     else {
       let top = -1e9, pick = ai.lat, ttc = mine;
       for (const c of NIGHT_LANES.concat([ai.lat])) {
-        const q = ttcFor(c), score = Math.min(q, 5) - Math.abs(c - ai.lat) * 0.07 - (c < 0 ? 0.25 : 0);   // (a little happier on its own side)
+        if (Math.abs(c) > lim) continue;   // (a ramp has room for two)
+        const q = ttcFor(c), score = Math.min(q, 5) - Math.abs(c - ai.lat) * 0.07 - (c < 0 && own ? 0.25 : 0);   // (a little happier on its own side)
         if (score > top) { top = score; pick = c; ttc = q; }
       }
       ai.latT = pick; ai.panic = ttc < 0.9;
@@ -6518,7 +6761,7 @@ function nightAi(ai, v, dt) {
   }
   const maxV = 3 + v * 0.2, want = clamp((ai.latT - ai.lat) * 2.6, -maxV, maxV);
   ai.latV = approach(ai.latV || 0, v > 1 ? want : 0, 15 * dt);
-  ai.lat = clamp(ai.lat + ai.latV * dt, -lim, lim);
+  ai.lat = approach(ai.lat + ai.latV * dt, clamp(ai.lat + ai.latV * dt, -lim, lim), 6 * dt);   // (squeezed in firmly but not instantly at a ramp)
   ai.wob = Math.max(0, (ai.wob || 0) - dt);
   // Nose into the swerve; a knock sets it wobbling for a moment
   ai.yaw = Math.atan2(ai.latV, Math.max(v, 5)) + (ai.wob > 0 ? Math.sin(ai.wob * 13) * 0.25 * ai.wob : 0);
@@ -6531,13 +6774,16 @@ function nightBand(ai) {
 // The barriers along the road: like the speedway's walls, a car is put back, loses the speed going into them and scrapes
 function nightWalls(dt) {
   if (S.hz > 1.2) return;
+  // The walled road is the legs' strips joined up (a city corner is a square): put the car back if it is outside them all
+  const half = 1.2;
+  if (nightInside(S.x, S.y, half)) return;
   let best = Infinity, px = 0, py = 0;
-  for (const sg of SEGS) {
-    const t = clamp((S.x - sg.ax) * sg.dx + (S.y - sg.ay) * sg.dy, 0, sg.len), qx = sg.ax + sg.dx * t - S.x, qy = sg.ay + sg.dy * t - S.y, d = qx * qx + qy * qy;
-    if (d < best) { best = d; px = qx; py = qy; }
+  for (const g of NIGHT_LEGS) {
+    const t = (S.x - g.ax) * g.dx + (S.y - g.ay) * g.dy, e = Math.max(0.5, legEdge(g, t) - half), te = clamp(t, -(g.a.hard ? e : 2), g.len + (g.b.hard ? e : 2));
+    const o = clamp((S.x - g.ax) * -g.dy + (S.y - g.ay) * g.dx, -e, e), qx = g.ax + g.dx * te - g.dy * o - S.x, qy = g.ay + g.dy * te + g.dx * o - S.y, d2 = qx * qx + qy * qy;
+    if (d2 < best) { best = d2; px = qx; py = qy; }
   }
-  const d = Math.sqrt(best), over = d - (CFG.RW + 3.2);
-  if (over <= 0) return;
+  const d = Math.sqrt(best) || 1e-3, over = d;
   const nx = -px / d, ny = -py / d;   // the way into the barrier
   S.x -= nx * over; S.y -= ny * over;
   const c = Math.cos(S.h), sn = Math.sin(S.h);
@@ -6559,8 +6805,10 @@ function glsNight(B, low) {
     B.box({x: b.x, y: b.y, hx: b.hx, hy: b.hy}, -b.w / 2, b.w / 2, -b.d / 2, b.d / 2, 0, b.h, b.side, b.top, b.end);
     for (const q of b.decor) if (!low || !q.fine) B.poly(q.pts, q.col);
   }
-  for (const q of D.barrier) { B.obj(q.x, q.y, low ? 120 : 240); nightBarrier(q, B.box); }
+  for (const q of D.barrier) { B.obj(q.x, q.y, low ? 120 : 300); nightBarrier(q, B.box); }
   for (const l of D.lamps) { B.obj(l.x, l.y, 399); nightLamp(l, B.box); }
+  for (const w of D.rwalls) { B.obj(w.x, w.y, 399); B.poly(w.p, 'rgb(44,44,52)'); }
+  for (const g of D.props) { B.obj(g.x, g.y, 399); for (const b of g.boxes) B.box(...b); for (const q of g.polys) B.poly(q.pts, q.col); }
 }
 // Soft halos round the lamps and neon, turned to the camera each frame: a fan fading from the color to nothing
 function glsNightGlows() {
@@ -6580,12 +6828,18 @@ function glsNightGlows() {
   for (const l of D.lamps) {
     const dx = l.x - CAMX, dy = l.y - CAMY, d = Math.hypot(dx, dy);
     if (d > 399 || dx * c + dy * s < -6 || n > maxV) continue;
-    halo(l.lx, l.ly, 9.0, 1.9 + d * 0.012, 255, 206, 140, 190, l.x, l.y);
+    halo(l.lx, l.ly, l.z, 1.9 + d * 0.012, 255, 206, 140, 190, l.x, l.y);
   }
   for (const q of D.signs) {
     const dx = q.x - CAMX, dy = q.y - CAMY, d = Math.hypot(dx, dy);
     if (d > 300 || dx * c + dy * s < -12 || n > maxV) continue;
     halo(q.x, q.y, q.z, q.r, q.col[0], q.col[1], q.col[2], 70, q.bx, q.by);
+  }
+  const flash = Math.floor(performance.now() / 500);
+  for (const b of D.blinkers) {
+    const dx = b.x - CAMX, dy = b.y - CAMY;
+    if ((flash + Math.floor(b.ph)) % 2 === 0 || dx * dx + dy * dy > 160 * 160 || dx * c + dy * s < -6 || n > maxV) continue;
+    halo(b.x, b.y, elev(b.x, b.y) + (b.z || 1.25), b.big ? 1.5 : 0.85, 255, 170, 30, 220, b.x, b.y);
   }
   GLS.glowN = n;
   const gl = GLT.gl;
