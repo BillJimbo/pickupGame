@@ -1524,7 +1524,7 @@ Object.assign(CARS, {
   // A 1990 Toyota Pickup 4x4, fully built for the rough stuff around its 22R-E: the fuel-injected 2.4 with a cam, a header
   // and a tune (116 hp stock). 33-inch mud tires, a long-travel lift, 4.88 axles behind the W56 five-speed, and a transfer
   // case with a 2.28 low range on the special-ability key (CFG.lowRange). Tube bumpers, a winch, skid plate, rock sliders,
-  // snorkel, light bar, roll bar, spare and jerry cans in the bed. The tires squirm on pavement and keep nearly all their
+  // snorkel, light bar, a bed cage and jerry cans. The tires squirm on pavement and keep nearly all their
   // grip off it. Its engine can go in the stock pickup; nothing replaces it here (no SWAPS entry).
   pickup4x4: rosterCar('pickup4x4', {
     short: 'Pickup 4x4 (built)', year: 1990, drive: 'awd', awdFront: 0.5, mass: 1720, r: 0.42, fd: 4.88, gears: [3.954, 2.141, 1.384, 1.0, 0.85], rev: 4.22, lowRange: 2.28,
@@ -1558,9 +1558,11 @@ Object.assign(CARS, {
         [['k', 0.96, 1.06, 0.84, 0.92, 0.9 + L, 1.58 + L], ['k', 0.9, 1.12, 0.82, 0.94, 1.58 + L, 1.66 + L]],
         // A roof rack with a light bar and its pods
         F('k', -0.25, 0.65, 0.74, 1.57, 1.59), F('k', 0.62, 0.78, 0.74, 1.6, 1.72), Y('hl', 0.76, 0.8, 0.1, 0.34, 1.62, 1.7), Y('hl', 0.76, 0.8, 0.42, 0.66, 1.62, 1.7),
-        // The roll bar in the bed, a spare standing against it and a pair of jerry cans
-        Y('k', -0.62, -0.52, 0.66, 0.74, 1.06, 1.72), F('k', -0.62, -0.52, 0.74, 1.66, 1.74), Y('k', -1.9, -0.6, 0.66, 0.72, 1.64, 1.7),
-        full('k', -1.5, -0.74, 0.17, 0.78 + L, 1.56 + L), full('c', -1.28, -0.96, 0.18, 1.02 + L, 1.32 + L),
+        // The bed cage: a hoop behind the cab and one over the tailgate, both standing on the bed rails, joined along the
+        // top by a rail each side (nothing left hanging in the air), and a pair of jerry cans
+        Y('k', -0.62, -0.52, 0.68, 0.76, 1.06, 1.72), F('k', -0.62, -0.52, 0.76, 1.66, 1.74),
+        Y('k', -2.08, -1.98, 0.68, 0.76, 1.06, 1.72), F('k', -2.08, -1.98, 0.76, 1.66, 1.74),
+        Y('k', -1.98, -0.62, 0.68, 0.76, 1.66, 1.74),
         Y('gn', -2.18, -1.86, 0.42, 0.66, 0.75, 1.15))};
     })(),
     ix: {dash: '#232220', trim: '#34302c', hoodY: 0.64, wheel: 3, cluster: 'box'}
