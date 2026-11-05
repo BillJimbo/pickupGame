@@ -4028,18 +4028,19 @@ function wheelieStep(dt) {
 // comes from the weight on the front (carLiftA), about 0.64 g at 50/50 (just under what slicks hold in this game, so it takes big power and the tires both), so tail-heavy cars lift first; a modern car stays down
 // however fast it is. A launch only, fading by about 60 mph, never past CAR_LIFT_MAX (15 degrees), so it cannot go over.
 const CAR_LIFT_MAX = 0.26;
-const carLiftA = () => 9.81 * 1.28 * (CFG.b / CFG.wb);
+const carLiftA = () => 9.81 * 1.28 * (CFG.b / CFG.wb) * (CFG.rearEngine ? 0.88 : 1);   // (an engine hung out back helps: a bit less again)
 function carLiftStep(dt) {
   if (CFG.trikeTips || CFG.horse || CFG.electric || CFG.drive !== 'rear' || !S.sb) return;
   const C = CARS[CFG.body];
   if (!C || !(C.year < 1985)) return;
   const made = ((CFG.hpEst || 0) + (S.nos ? CFG.nosHp || 0 : 0)) / Math.max(1, parseFloat(C.hp) || CFG.hpEst || 1);   // (how far past stock)
-  const aim = made < 1.4 || S.aloft || S.v < 0 ? 0 : CAR_LIFT_MAX * clamp((S.ax - carLiftA()) / 1.5, 0, 1) * clamp(1 - (S.v - 10) / 16, 0, 1);
+  const aim = made < 1.2 || S.aloft || S.v < 0 ? 0 : CAR_LIFT_MAX * clamp((S.ax - carLiftA()) / 1.5, 0, 1) * clamp(1 - (S.v - 10) / 16, 0, 1);
   if (!aim && !S.wh) return;
   S.wh = S.wh || 0; S.whV = S.whV || 0;
   S.whV += (40 * (aim - S.wh) - 9 * S.whV) * dt; S.wh += S.whV * dt;
   if (S.wh <= 0) { if (S.whV < -0.5) { sfx('clunk'); S.sb.pv = (S.sb.pv || 0) + S.whV * 0.25; } S.wh = 0; S.whV = 0; }
   if (S.wh > CAR_LIFT_MAX) { S.wh = CAR_LIFT_MAX; S.whV = 0; }
+  if (S.wh > 0.05 && !S.whTold) { S.whTold = true; log('Front wheels up!', 'ok'); }
   S.sb.wh = S.wh;
 }
 function trikeStep(dt) {
