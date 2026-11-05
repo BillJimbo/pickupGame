@@ -4011,7 +4011,21 @@ function physics(dt) {
     S.rut = (S.rut || 0) + ((Math.random() * 2 - 1) - (S.rut || 0)) * Math.min(1, dt * 5);
     S.r += S.rut * 0.35 * sp * dt * (CFG.trikeTips ? 0.4 : 1);
     S.pitchV += (Math.random() - 0.5) * 0.9 * sp * dt * 60 * 0.02;
+    // Individual bumps at random moments (stones, ruts, washboard patches): the gaps, sizes and sides all vary, mostly
+    // small knocks with now and then a big one. Each kicks the body up (S.bz, a damped spring the cab's eye follows),
+    // tips the nose, nudges the tail and shoves the eye sideways (S.bl).
+    S.bumpT = (S.bumpT || 0) - dt * (0.5 + sp);
+    if (S.bumpT <= 0) {
+      S.bumpT = 0.04 + Math.random() ** 1.6 * 0.5;
+      const m = Math.random() ** 3 * (Math.random() < 0.12 ? 2.4 : 1), side = Math.random() < 0.5 ? -1 : 1, tk = CFG.trikeTips ? 0.5 : 1;
+      S.bzv = (S.bzv || 0) + (0.05 + m * 0.5) * sp * (0.6 + Math.random() * 0.8);
+      S.blv = (S.blv || 0) + side * (0.02 + m * 0.35) * sp * Math.random();
+      S.pitchV += (Math.random() - 0.45) * (0.3 + m * 2.4) * sp;
+      S.rut = clamp((S.rut || 0) + side * m * 2.2 * tk, -2.5, 2.5);
+    }
   } else S.gw = 0;
+  S.bzv = ((S.bzv || 0) + (-(S.bz || 0) * 190 - (S.bzv || 0) * 15) * dt); S.bz = (S.bz || 0) + S.bzv * dt;   // the springs settle
+  S.blv = ((S.blv || 0) + (-(S.bl || 0) * 140 - (S.blv || 0) * 13) * dt); S.bl = (S.bl || 0) + S.blv * dt;
   const air = S.hz > 0.02, SG = air ? 0 : surfGrip() * bankGrip * (1 + clamp(S.gw || 0, -0.07, 0.07));   // in the air the tires have nothing to grip
   camStep(dt);
   hybridStep(dt);
@@ -4656,8 +4670,9 @@ function setCam(dt = 0) {
       SWAY.u += (on * clamp(-S.ax * 0.006, -0.05, 0.06) - SWAY.u) * k;
       // Rough ground shakes the cab, more the faster you go (a mix of quick jolts and slower heaves)
       const rough = onDirt() && !S.hz ? clamp(Math.abs(S.v) / 16, 0, 1.3) : 0;
-      const jolt = rough ? (0.006 * (Math.random() - 0.5) + 0.004 * Math.sin(S.t * 2 * Math.PI * 7.3) + 0.005 * Math.sin(S.t * 2 * Math.PI * 2.1 + 1)) * rough : 0;
+      const jolt = rough ? 0.008 * (Math.random() - 0.5) * rough + (S.bz || 0) : 0;   // fine buzz plus the bumps' spring
       SWAY.z = on * shake + jolt;
+      SWAY.vb = on && rough ? (S.bl || 0) : 0;   // (kept apart from SWAY.v, which eases toward its own target)
       const e = eyePos(), c = Math.cos(S.h), sn = Math.sin(S.h);
       CAMX = S.x + c * e.u - sn * e.v; CAMY = S.y + sn * e.u + c * e.v; CAMYAW = S.h;
       CAMZ = elev(S.x, S.y) + e.z + (S.hz || 0);
@@ -8275,7 +8290,7 @@ function drawSportInterior(ix) {
 // Anything closer than a few centimeters to the eye is clipped off before projecting.
 // (A rider on a three-wheeler always gets the handlebar view: there is no 2D cockpit for one)
 function has3dCab() { return !SHOWCASE && ((CFG.ix && (CFG.ix.bike || CFG.ix.horse)) || (SETTINGS.cockpit !== '2d' && !!cabSpec(CFG.body))); }
-function eyePos() { const e = cabSpec(CFG.body).eye; return {u: e.u + SWAY.u, v: e.v + SWAY.v, z: e.z + SWAY.z}; }
+function eyePos() { const e = cabSpec(CFG.body).eye; return {u: e.u + SWAY.u, v: e.v + SWAY.v + (SWAY.vb || 0), z: e.z + SWAY.z}; }
 // Where the cab is in a car: the hand-built pickup's figures, or worked out from the car's 3D model (see cabGeom)
 function cabSpec(body) { return CAB3D[body] || cabGeom(body); }// The eye's view of a point in the car's frame: [right, up, forward], in meters
 function cabCam(E, u, v, z) { return [v - E.v, z - E.z, u - E.u]; }
