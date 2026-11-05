@@ -3689,6 +3689,7 @@ function ovalWalls(dt) {
 }
 function thrusterStep(dt) {
   const T = CFG.thrusters;
+  if (S.infAir && T) S.airTank = 1;   // the Test Track's infinite air option: the tank never drops
   S.thrust = !!T && !!KEYS.KeyX && S.airTank > 0 && S.engineOn && !S.finished;
   if (!T) return 0;
   if (!S.thrust) { if (S.hz <= 0.02) S.airTank = Math.min(1, S.airTank + dt * 0.03); return 0; }   // (the compressor only refills it on the ground)
@@ -3965,7 +3966,7 @@ function drawAirGauge() {
   ctx.fillStyle = S.thrust ? '#ffffff' : f < 0.15 ? '#c8553d' : '#c9d3dc'; ctx.fillRect(x, y + h * (1 - f), w, h * f);
   ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x, y + h * 0.85, w, 1.5 * u);   // the line below which it cannot hop
   ctx.fillStyle = S.thrust ? '#ffffff' : '#c9c4b8'; ctx.font = `700 ${Math.round(11 * u)}px "IBM Plex Mono", monospace`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText('AIR', x + w / 2, y + h + 5 * u);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(S.infAir ? 'AIR ∞' : 'AIR', x + w / 2, y + h + 5 * u);
 }
 function drawRollGauge() {
   if (!CFG.trikeTips || SHOWCASE) return;
@@ -9465,6 +9466,7 @@ function reset() {
   if (EVT !== null) { startEvent(EVT); return; }
   setMap(TT_MAP);
   S = newState();
+  S.infAir = !CAREER_CAR && !!CFG.thrusters && !!(TT_USED && TT_USED.mods && TT_USED.mods.infAir);   // the Roadster's Test Track free-drive option
   S.rain = TT_RAIN ? 1 : 0;   // the garage's weather
   S.tod = TT_TIME;            // and its time of day
   if (ROUTE && ROUTE[0]) { S.x = ROUTE[0][0]; S.y = ROUTE[0][1]; }   // on the start line (the speedway's is mid-straight)
@@ -12535,6 +12537,7 @@ function buildModLists() {
     box.innerHTML = boxSel + (swaps.length > 1 ? `<div class="lbl">Engine</div><select data-engine style="font:inherit;background:var(--panel);color:inherit;border:1px solid var(--line);padding:4px;margin-bottom:6px">` +
       swaps.map(k => { const open = partUnlocked(id, 'engine', k); return `<option value="${k}"${(m.engine || id) === k ? ' selected' : ''}${open ? '' : ' disabled'}>${ENGINES[k].name}${k === id ? ' (original)' : open ? '' : ' (locked)'}</option>`; }).join('') + '</select>' +
       `<small class="tt-spec">${ENGINES[m.engine || id].spec || ''}</small>` : '') +
+      (car.thrusters ? `<label><input type="checkbox" data-infair${m.infAir ? ' checked' : ''}><span><b>Infinite air</b><small>The air tank never runs down: thrust, hop and fly as long as you like. Free drives only.</small></span></label>` : '') +
       '<div class="lbl">Forced induction</div>' + opts.map(([v, name, note]) =>
       `<label${partUnlocked(id, 'fi:' + fiKindFor(id, m.engine), v) ? '' : ' class="locked"'}><input type="radio" name="${grp}" data-fi="${v}"${fi === v ? ' checked' : ''}${partUnlocked(id, 'fi:' + fiKindFor(id, m.engine), v) ? '' : ' disabled'}><span><b>${name}</b><small>${note}</small></span></label>`).join('') +
       '<div class="lbl" style="margin-top:6px">Parts</div>' + partCatsFor(id, m.engine).map(cat => {
@@ -12569,6 +12572,7 @@ document.addEventListener('change', e => {
     if (fiKindFor(id, m.engine) !== before) m.fi = 'none';
     saveMods(); buildModLists(); return;
   }
+  if (e.target.matches('[data-infair]')) { modsFor(e.target.closest('[data-modcar]').dataset.modcar).infAir = e.target.checked; saveMods(); return; }
   const fi = e.target.closest('[data-fi]');
   if (fi) { const m = modsFor(fi.closest('[data-modcar]').dataset.modcar); m.fi = fi.dataset.fi; delete m.turbo; saveMods(); return; }
 });
