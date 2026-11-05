@@ -4017,11 +4017,11 @@ function physics(dt) {
     S.bumpT = (S.bumpT || 0) - dt * (0.5 + sp);
     if (S.bumpT <= 0) {
       S.bumpT = 0.04 + Math.random() ** 1.6 * 0.5;
-      const m = Math.random() ** 3 * (Math.random() < 0.12 ? 2.4 : 1), side = Math.random() < 0.5 ? -1 : 1, tk = CFG.trikeTips ? 0.5 : 1;
-      S.bzv = (S.bzv || 0) + (0.05 + m * 0.5) * sp * (0.6 + Math.random() * 0.8);
-      S.blv = (S.blv || 0) + side * (0.02 + m * 0.35) * sp * Math.random();
-      S.pitchV += (Math.random() - 0.45) * (0.3 + m * 2.4) * sp;
-      S.rut = clamp((S.rut || 0) + side * m * 2.2 * tk, -2.5, 2.5);
+      const m = Math.random() ** 3 * (Math.random() < 0.08 ? 1.8 : 1), side = Math.random() < 0.5 ? -1 : 1, tk = CFG.trikeTips ? 0.5 : 1;
+      S.bzv = (S.bzv || 0) + (0.03 + m * 0.3) * sp * (0.6 + Math.random() * 0.8);
+      S.blv = (S.blv || 0) + side * (0.01 + m * 0.2) * sp * Math.random();
+      S.pitchV += (Math.random() - 0.45) * (0.15 + m * 1.2) * sp;
+      S.rut = clamp((S.rut || 0) + side * m * 1.1 * tk, -1.5, 1.5);
     }
   } else S.gw = 0;
   S.bzv = ((S.bzv || 0) + (-(S.bz || 0) * 190 - (S.bzv || 0) * 15) * dt); S.bz = (S.bz || 0) + S.bzv * dt;   // the springs settle
