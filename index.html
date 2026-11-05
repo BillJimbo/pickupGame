@@ -474,7 +474,9 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
     <section class="tt-step tt-row2">
       <div><h3 class="tt-h"><b>2</b>Weather</h3>
         <div class="seg" id="wxPick" role="group" aria-label="Weather"><button type="button" data-wx="dry" class="on">Dry</button><button type="button" data-wx="rain">Rain</button></div>
-        <p class="tt-hint" id="wxHint"></p></div>
+        <p class="tt-hint" id="wxHint"></p>
+        <div class="seg" id="todPick" role="group" aria-label="Time of day" style="margin-top:10px"><span>Time</span><button type="button" data-tod="morning">Morning</button><button type="button" data-tod="day" class="on">Day</button><button type="button" data-tod="evening">Evening</button><button type="button" data-tod="night">Night</button></div>
+        <p class="tt-hint" id="todHint"></p></div>
       <div><h3 class="tt-h"><b>3</b>Mode</h3>
         <div class="seg" id="modePick" role="group" aria-label="Mode"><button type="button" data-mode="free" class="on">Free drive</button><button type="button" data-mode="timed">Timed run</button><button type="button" data-mode="street">Street race</button><button type="button" data-mode="ghost">Race a ghost</button></div>
         <div class="tt-mode" data-for="free"><p class="tt-hint">No clock and no laps: take any car anywhere.</p></div>
@@ -4736,10 +4738,65 @@ const SKY_ALPINE = (() => {
   return c;
 })();
 const isPassMap = () => MAP_KIND === 'pass' || MAP_KIND === 'passR';
+// A starry night for the country maps: the night sky without the city's towers, a moon over the hills
+const SKY_STARS = (() => {
+  const c = document.createElement('canvas');
+  c.width = SKY_W; c.height = SKY_H;
+  const g = c.getContext('2d'), rnd = seeded(505);
+  const grad = g.createLinearGradient(0, 0, 0, SKY_H);
+  grad.addColorStop(0, '#05081a'); grad.addColorStop(0.6, '#0e1634'); grad.addColorStop(1, '#27304f');
+  g.fillStyle = grad; g.fillRect(0, 0, SKY_W, SKY_H);
+  for (let i = 0; i < 520; i++) {
+    g.fillStyle = `rgba(${220 + rnd() * 35 | 0},${220 + rnd() * 35 | 0},255,${0.3 + rnd() * 0.7})`;
+    g.fillRect(rnd() * SKY_W, rnd() * SKY_H * 0.8, rnd() < 0.1 ? 2 : 1, rnd() < 0.1 ? 2 : 1);
+  }
+  const mx = SUN_AZ / (Math.PI * 2) * SKY_W, my = SKY_H * 0.2, mr = SKY_H * 0.05, halo = g.createRadialGradient(mx, my, mr * 0.5, mx, my, mr * 5);
+  halo.addColorStop(0, 'rgba(200,215,255,0.35)'); halo.addColorStop(1, 'rgba(200,215,255,0)');
+  g.fillStyle = halo; g.fillRect(mx - mr * 5, my - mr * 5, mr * 10, mr * 10);
+  g.fillStyle = '#f2f4fa'; g.beginPath(); g.arc(mx, my, mr, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#0c1020'; g.beginPath(); g.moveTo(0, SKY_H);   // the far hills, a dark ridge
+  for (let x = 0; x <= SKY_W; x += 4) { const u = 2 * Math.PI * x / SKY_W; g.lineTo(x, SKY_H - (60 + 30 * Math.sin(3 * u) + 18 * Math.sin(7 * u + 1.3) + 9 * Math.sin(13 * u))); }
+  g.lineTo(SKY_W, SKY_H); g.closePath(); g.fill();
+  return c;
+})();
+// Time of day in a Test Track drive (S.tod): which sky, a color the whole picture is multiplied by, and at night the
+// car's headlight beams. The sunset sky is the title screen's; morning is the midday sky under a warm, pale wash.
+const TOD = {
+  morning: {sky: () => SKY_DAY, mul: [255, 234, 205], hint: 'Low, warm light.'},
+  day: {sky: () => SKY_DAY, mul: null, hint: 'Midday sun.'},
+  evening: {sky: () => SKY, mul: [255, 170, 125], hint: 'A low orange sun and long shadows of color.'},
+  night: {sky: () => SKY_STARS, mul: [78, 92, 150], lights: true, hint: 'Moonlit, with your headlights on.'}
+};
+// The drive's time of day (the showcase and Midnight City keep their own light)
+const todNow = () => SHOWCASE || isNightMap() ? 'day' : S.tod || 'day';
+function drawTodGrade() {
+  const t = TOD[todNow()];
+  if (!t.mul) return;
+  const P = VIEW_PAD + 2;
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = `rgb(${t.mul})`; ctx.fillRect(-P, -P, VW + 2 * P, VH + 2 * P);
+  if (t.lights && !CFG.horse) {   // two headlight beams along the road ahead, brightest near the car
+    ctx.globalCompositeOperation = 'lighter';
+    const c = Math.cos(S.h), s = Math.sin(S.h), rx = -s, ry = c, steps = 40, near = VIEW === 'cockpit' ? 3 : 4.5;   // (in the chase view the beams start past the nose, not over the truck)
+    for (const side of [-0.7, 0.7]) {
+      let prev = null;
+      for (let k = 0; k <= steps; k++) {
+        const d = near + (k / steps) ** 1.6 * 42, hw = 0.5 + d * 0.11;
+        const pl = proj(S.x + c * d + rx * (side * 0.5 + side * d * 0.04 - hw), S.y + s * d + ry * (side * 0.5 + side * d * 0.04 - hw), 0);
+        const pr = proj(S.x + c * d + rx * (side * 0.5 + side * d * 0.04 + hw), S.y + s * d + ry * (side * 0.5 + side * d * 0.04 + hw), 0);
+        const cur = pl && pr ? [pl, pr, d] : null;
+        if (prev && cur) polyFill([prev[0], prev[1], cur[1], cur[0]], `rgba(255,240,200,${0.2 * (1 - prev[2] / 46) ** 1.5})`);
+        prev = cur;
+      }
+    }
+  }
+  ctx.restore();
+}
 function drawSky() {
   // The view spans VW / F radians of the panorama, which is a full turn across SKY_W pixels
   // The title keeps the sunset; the game modes use the midday sky
-  const TEX = SHOWCASE ? SKY : isNightMap() ? SKY_NIGHT : isPassMap() ? SKY_ALPINE : isForestMap() ? SKY_AUTUMN : SKY_DAY;
+  const TEX = SHOWCASE ? SKY : isNightMap() ? SKY_NIGHT : todNow() !== 'day' ? TOD[todNow()].sky() : isPassMap() ? SKY_ALPINE : isForestMap() ? SKY_AUTUMN : SKY_DAY;
   const P = VIEW_PAD, W2 = VW + 2 * P;   // wider than the screen while the cockpit view is rolled, so no corner is left bare
   if (P) ctx.translate(-P, 0);
   const sw = (W2 / F) / (Math.PI * 2) * SKY_W;
@@ -7420,6 +7477,7 @@ function draw(dt) {
   drawDust();
   if (S.rain && !SHOWCASE) drawRain(dt);
   else if (isForestMap() && !SHOWCASE) drawLeaves(dt);   // autumn leaves drifting down
+  drawTodGrade();   // time of day: the colored light over everything in the world
   if (rolled) { ctx.restore(); VIEW_PAD = 0; }   // the cab, gauges and overlays are not rolled
   const vig = ctx.createRadialGradient(VW / 2, VH * 0.5, VH * 0.3, VW / 2, VH * 0.5, VW * 0.7);
   vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.45)');
@@ -8750,6 +8808,7 @@ function reset() {
   setMap(TT_MAP);
   S = newState();
   S.rain = TT_RAIN ? 1 : 0;   // the garage's weather
+  S.tod = TT_TIME;            // and its time of day
   if (ROUTE && ROUTE[0]) { S.x = ROUTE[0][0]; S.y = ROUTE[0][1]; }   // on the start line (the speedway's is mid-straight)
   if (TT_MAP === 'lot') { S.x = 12; S.y = 8; S.h = 0; }   // free drive on the lot starts on the long south lane
   if (TT_MAP === 'suburb') { S.x = 262; S.y = 202; S.h = 0; }   // Maple Grove: outside Gino's on Elm St
@@ -10518,7 +10577,7 @@ function drawRaceMap(free) {
 // saved as a ghost file: the car, its exact parts and setup (the mods the drive used), its paint, the map, the laps,
 // the times and the recording. Loading one in the garage (GHOST) offers a ghost race: the same car with the same parts
 // on the same map, against a see-through copy of that run, with the gap shown live. Timed runs need a loop map.
-let TT_LAPS = 1, TT_MODE = 'free', TT_RAIN = false, GHOST = null, GHOST_RACE = false, TT_USED = null, LAST_RUN = null;
+let TT_LAPS = 1, TT_MODE = 'free', TT_RAIN = false, TT_TIME = 'day', GHOST = null, GHOST_RACE = false, TT_USED = null, LAST_RUN = null;
 const GHOST_DT = 0.05;
 const LOOP_MAPS = ['circuit', 'short', 'plot', 'dirt', 'rally', 'forest', 'oval', 'airfield', 'pass', 'night'];
 const MAP_NAMES = {circuit: 'Circuit', short: 'Club circuit', plot: 'Parking lot', dirt: 'Dirt course', rally: 'Rally stage', forest: 'Forest stage', oval: 'Speedway', airfield: 'Airfield', pass: 'Mountain pass', night: 'Midnight City'};
@@ -10527,7 +10586,7 @@ function ttRunEvent() {
   if (TT_MODE === 'street' && !GHOST_RACE) return {id: 'ttstreet', ttStreet: true, map: 'night', laps: TT_LAPS, prize: 0, rain: TT_RAIN ? 1 : 0, name: 'Street race',
     series: {name: 'Test Track', skill: 0.82, pool: (r, me) => r.tier === me.tier && !CARS[r.body].trikeTips}};
   const laps = GHOST_RACE && GHOST ? GHOST.laps : TT_LAPS, map = GHOST_RACE && GHOST ? GHOST.map : TT_MAP;
-  return {id: 'ttrun', ghostRun: true, map, laps, prize: 0, rain: GHOST_RACE && GHOST ? GHOST.rain || 0 : TT_RAIN ? 1 : 0, name: GHOST_RACE ? 'Ghost race' : `Timed run: ${laps} ${laps === 1 ? 'lap' : 'laps'}`,
+  return {id: 'ttrun', ghostRun: true, map, laps, prize: 0, rain: GHOST_RACE && GHOST ? GHOST.rain || 0 : TT_RAIN ? 1 : 0, tod: GHOST_RACE && GHOST ? GHOST.tod || 'day' : TT_TIME, name: GHOST_RACE ? 'Ghost race' : `Timed run: ${laps} ${laps === 1 ? 'lap' : 'laps'}`,
     series: {name: 'Test Track', solo: true}};
 }
 const carLabel = id => { const r = ROSTER.find(x => x.body === id); return r ? `${r.year} ${r.name}` : CARS[id].name; };
@@ -10568,7 +10627,7 @@ function finishTimedRun() {
   S.nos = false; S.finished = true; RX.done = RX.t + RX.jump + (RX.pen || 0); bigMsg('');
   const ev = RX.ev, laps = RX.lapTimes.map((t, k) => t - (k ? RX.lapTimes[k - 1] : 0)), g = RX.ghost;
   LAST_RUN = {format: 'pickup-trial-ghost', v: 1, date: new Date().toISOString().slice(0, 10), driver: (SETTINGS.driverName || '').slice(0, 24),
-    car: TT_USED.id, mods: TT_USED.mods, paint: CFG.paint, map: ev.map, laps: ev.laps, rain: ev.rain || 0, time: +RX.done.toFixed(3), lapTimes: laps.map(t => +t.toFixed(3)),
+    car: TT_USED.id, mods: TT_USED.mods, paint: CFG.paint, map: ev.map, laps: ev.laps, rain: ev.rain || 0, tod: ev.tod || 'day', time: +RX.done.toFixed(3), lapTimes: laps.map(t => +t.toFixed(3)),
     jump: RX.jump, pen: +(RX.pen || 0).toFixed(2), dt: GHOST_DT, x: RX.rec.x, y: RX.rec.y, h: RX.rec.h, p: RX.rec.p};
   const gl = g ? g.lapTimes : null;
   const rows = laps.map((t, k) => `<tr><td>Lap ${k + 1}</td><td style="text-align:right">${fmtRun(t)}</td>${gl ? `<td style="text-align:right;color:var(--dim)">${gl[k] !== undefined ? fmtRun(gl[k]) : ''}</td><td style="text-align:right;color:${gl[k] !== undefined && t <= gl[k] ? 'var(--ok)' : 'var(--bad)'}">${gl[k] !== undefined ? (t <= gl[k] ? '−' : '+') + Math.abs(t - gl[k]).toFixed(2) : ''}</td>` : ''}</tr>`).join('');
@@ -10615,7 +10674,7 @@ function readGhost(text) {
     else if (v && typeof v === 'object') mods[k] = JSON.parse(JSON.stringify(v));
   }
   if (mods.engine && !swapsFor(o.car).includes(mods.engine)) delete mods.engine;
-  return {format: o.format, rain: o.rain ? 1 : 0, car: o.car, mods, paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : null, map: o.map, laps: Math.round(o.laps), time: +o.time,
+  return {format: o.format, rain: o.rain ? 1 : 0, tod: ['morning', 'day', 'evening', 'night'].includes(o.tod) ? o.tod : 'day', car: o.car, mods, paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : null, map: o.map, laps: Math.round(o.laps), time: +o.time,
     lapTimes: (o.lapTimes || []).filter(t => typeof t === 'number'), driver: typeof o.driver === 'string' ? o.driver.slice(0, 24) : '', date: typeof o.date === 'string' ? o.date.slice(0, 10) : '',
     dt: o.dt > 0.01 && o.dt < 1 ? o.dt : GHOST_DT, x: o.x, y: o.y, h: o.h, p: o.p};
 }
@@ -10646,6 +10705,10 @@ function updateTTSetup() {
   if (timed && !LOOP_MAPS.includes(TT_MAP)) { TT_MAP = 'circuit'; document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP)); }
   document.querySelectorAll('#mapPick [data-map]').forEach(b => { const off = (timed && !LOOP_MAPS.includes(b.dataset.map)) || ghost || (street && b.dataset.map !== 'night'); b.classList.toggle('off', off); b.title = off ? (ghost ? 'The ghost picks the track' : street ? 'Street races run on Midnight City' : 'Timed runs need a loop track') : ''; });
   document.querySelectorAll('#wxPick button').forEach(b => { b.classList.toggle('off', ghost); });
+  // Time of day: the ghost picks it too; Midnight City is always night
+  const fixedTime = ghost || TT_MAP === 'night' || TT_MAP === 'nightR';
+  document.querySelectorAll('#todPick [data-tod]').forEach(b => { b.classList.toggle('on', b.dataset.tod === TT_TIME && !fixedTime); b.classList.toggle('off', fixedTime); });
+  $('todHint').textContent = ghost ? 'The ghost picks the time of day.' : fixedTime ? 'Midnight City is always night.' : TOD[TT_TIME].hint;
   $('mapHint').textContent = ghost ? 'The ghost picks the track.' : street ? 'Street races run on Midnight City.' : timed ? 'Timed runs and ghosts need a loop track: the training lot and the towns are free drive only.' : '';
   $('mapHint').hidden = !$('mapHint').textContent;
   const pass = TT_MAP === 'pass';
@@ -10658,6 +10721,7 @@ function updateTTSetup() {
 }
 $('modePick').addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (b) { TT_MODE = b.dataset.mode; updateTTSetup(); } });
 $('wxPick').addEventListener('click', e => { const b = e.target.closest('[data-wx]'); if (b && TT_MODE !== 'ghost') { TT_RAIN = b.dataset.wx === 'rain'; updateTTSetup(); } });
+$('todPick').addEventListener('click', e => { const b = e.target.closest('[data-tod]'); if (b && TT_MODE !== 'ghost') { TT_TIME = b.dataset.tod; updateTTSetup(); } });
 $('ghostLoadBtn').addEventListener('click', () => $('ghostFile').click());
 $('drvName').value = SETTINGS.driverName || '';
 $('drvName').addEventListener('input', e => { SETTINGS.driverName = e.target.value.trim().slice(0, 24); saveSettings(); });
@@ -11219,6 +11283,7 @@ function startEvent(i) {
   setMap(ev.map);
   S = newState();
   S.engineOn = true; S.rpm = CFG.idle; S.started = true;   // on the grid with the engine running
+  S.tod = ev.tod || 'day';   // the time of day (a timed run or ghost race carries the garage's)
   S.rain = ev.rain || 0;   // a wet race: less grip for everyone (see tireGrip), spray and rain on screen
   camS = null; THR_HOLD = null; CLU_HOLD = null; DUST.length = 0; EXHAUST.length = 0;
   $('log').innerHTML = '';
