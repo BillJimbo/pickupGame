@@ -9545,7 +9545,7 @@ function applyCarDefaults(id, eng) {
   // The car with its engine (a swapped one if fitted). Settings only some cars have go back to their defaults first,
   // so nothing carries over from the last car.
   const C = effCar(id, eng);
-  Object.assign(CFG, {lowRange: null, lowOn: false, snowBase: null, abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
+  Object.assign(CFG, {lowRange: null, lowOn: false, snowBase: null, fuel: null, abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
   CFG.engineKey = eng && ENGINES[eng] ? eng : id;
   if (!CFG.tank) CFG.tank = tankFor(id);
   CFG.redZone = C.redline;   // the tach's red zone: the factory redline, whatever the tune does to the limiter
@@ -11478,8 +11478,8 @@ const SERIES = [
   {id: 'eco', cat: 'special', name: 'Economy Run', rule: 'Any car that burns fuel. Beat the time limit using as little fuel as you can', skill: 0, solo: true,
    ok: (c, r) => !CARS[r.body].electric, why: 'Electric cars burn no fuel.', pool: () => false,
    reward: {cash: 3000},
-   events: [{id: 'eco1', name: 'Country road economy run', map: 'circuit', laps: 2, ecoMph: 40, eco: [45, 33, 24], prize: 1200},
-            {id: 'eco2', name: 'Airfield economy run', map: 'airfield', laps: 3, ecoMph: 32, eco: [45, 33, 24], prize: 1600}]},
+   events: [{id: 'eco1', name: 'Country road economy run', map: 'circuit', laps: 2, ecoMph: 40, eco: [53, 39, 28], prize: 1200},
+            {id: 'eco2', name: 'Airfield economy run', map: 'airfield', laps: 3, ecoMph: 32, eco: [53, 39, 28], prize: 1600}]},
   // Special: the Wet Weather Cup, the one place it rains (rain on an event: S.rain in startEvent). Any car, against a field
   // from your own tier; the AI loses grip and braking in the wet too.
   {id: 'wet', cat: 'special', name: 'Wet Weather Cup', rule: 'Any car, racing in the pouring rain', skill: 0.8,
