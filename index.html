@@ -5421,6 +5421,7 @@ function drawBox(...a) {
 }
 let BODY_PITCH = 0, CUR_PITCH = 0;   // the player's body pitch while its model is queued, and while a box is drawn
 function drawBoxNow(cp, u0, u1, v0, v1, z0, z1, side, top, end, lamps) {
+  if (GLC.rec) return glcBox(cp, u0, u1, v0, v1, z0, z1, side, top, end);   // (on the graphics chip: see GLC)
   const rx = -cp.hy, ry = cp.hx, pt = CUR_PITCH;
   const P = (u, v, z) => proj(cp.x + cp.hx * u + rx * v, cp.y + cp.hy * u + ry * v, z + u * pt + LIFT);
   const cu = (CAMX - cp.x) * cp.hx + (CAMY - cp.y) * cp.hy;
@@ -6601,6 +6602,7 @@ function glowSprite(r, g, b) {
   return c;
 }
 function drawGlow(x, y, z, rad, r, g, b, alpha = 1) {
+  if (GLC.rec) return glcHalo(x, y, elev(x, y) + z, rad, r, g, b, alpha);
   const p = proj(x, y, z);
   if (!p) return;
   const R = Math.max(1.5, rad * F / p[2]);
@@ -6709,7 +6711,7 @@ function addNightItems(items, dist, glS) {
     if (t.x === undefined) continue;
     t.d = dist(t.x, t.y);
     if (t.d > (low ? 130 : 240) || !front(t.x, t.y, 8)) continue;
-    items.push({d: t.d, fn: () => { NIGHT_CAR = {brake: t.v < t.vPrev - 0.01 || t.v < 2, blink: t.blinkT > 0 ? t.blink : 0}; drawOther(t.body, t.x, t.y, t.h, t.paint); NIGHT_CAR = null; }});
+    glcItem(items, t.d, t.x, t.y, () => { NIGHT_CAR = {brake: t.v < t.vPrev - 0.01 || t.v < 2, blink: t.blinkT > 0 ? t.blink : 0}; drawOther(t.body, t.x, t.y, t.h, t.paint); NIGHT_CAR = null; });
   }
   if (glS) return;
   const D = nightData();
@@ -6719,8 +6721,8 @@ function addNightItems(items, dist, glS) {
     if (d > 260) continue;
     items.push({d, fn: () => {
       queued(() => drawBox({x: b.x, y: b.y, hx: b.hx, hy: b.hy}, -b.w / 2, b.w / 2, -b.d / 2, b.d / 2, b.z0 || 0, b.h, b.side, b.top, b.end, null));
-      if (d > 150) return;
-      for (const q of b.decor) if ((CAMX - q.pts[0][0]) * q.nx + (CAMY - q.pts[0][1]) * q.ny > 0 && (!q.fine || d < 80)) polyFill(q.pts.map(p => proj(p[0], p[1], p[2])), q.col);
+      if (d > 70) return;   // (windows and signs only close by: painting them all took half a second a frame)
+      for (const q of b.decor) if ((CAMX - q.pts[0][0]) * q.nx + (CAMY - q.pts[0][1]) * q.ny > 0 && (!q.fine || d < 30)) polyFill(q.pts.map(p => proj(p[0], p[1], p[2])), q.col);
     }});
   }
   for (const q of D.barrier) {
@@ -7010,6 +7012,70 @@ function glsNightGlows() {
   const gl = GLT.gl;
   if (!GLS.glow) GLS.glow = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, GLS.glow); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(out, 0, n * 7), gl.DYNAMIC_DRAW);
+}
+
+/* ---------- the WebGL vehicles ---------- */
+// Stage 3: every vehicle goes on the graphics chip. While a frame's items are gathered, each vehicle's own drawing code
+// runs at once with GLC.rec set: drawBoxNow hands its faces to glcBox instead of painting them, into a buffer written
+// fresh each frame and drawn by glsRender with the scenery, so the depth buffer sorts them against buildings, trees and
+// the ground exactly. The boxes still run in their usual order; a later one is pulled a hair toward the camera so that it
+// wins where two faces lie in the same plane, as it did when painted last. A shadow is still painted in 2D, which now
+// lands on the ground under everything, since this all happens before the first slice is copied in. Car lamps become
+// halos facing the camera. On the Classic renderer none of this runs and the models paint themselves as before.
+const GLC = {on: false, rec: false, cx: 0, cy: 0, seq: 0, ds: [], n: 0, nT: 0, nG: 0, o: null, t: null, g: null, vbo: null, tbo: null, gbo: null};
+const GLC_V = 180000;   // vertices kept for each list (a car is about 700)
+function glcList() { const b = new ArrayBuffer(GLC_V * 28); return {f: new Float32Array(b), u: new Uint32Array(b)}; }
+function glcBegin(on) {
+  GLC.on = on; GLC.rec = false; GLC.ds.length = 0; GLC.n = GLC.nT = GLC.nG = 0;
+  if (on && !GLC.o) { const gl = GLT.gl; GLC.o = glcList(); GLC.t = glcList(); GLC.g = glcList(); GLC.vbo = gl.createBuffer(); GLC.tbo = gl.createBuffer(); GLC.gbo = gl.createBuffer(); }
+}
+// A vehicle (or anything else made of boxes) for this frame: recorded now on WebGL, or left to the painter on Classic
+function glcItem(items, d, x, y, fn) {
+  if (!GLC.on) { items.push({d, fn}); return; }
+  GLC.rec = true; GLC.cx = x; GLC.cy = y; GLC.seq = 0;
+  fn();
+  GLC.rec = false; GLC.ds.push(d);
+}
+function glcBox(cp, u0, u1, v0, v1, z0, z1, side, top, end) {
+  const rx = -cp.hy, ry = cp.hx, pt = CUR_PITCH, cu = (CAMX - cp.x) * cp.hx + (CAMY - cp.y) * cp.hy, cv = (CAMX - cp.x) * rx + (CAMY - cp.y) * ry, camZ = CAMZ - elev(cp.x, cp.y);
+  const alpha = Math.round(ctx.globalAlpha * 255), L = alpha < 255 ? GLC.t : GLC.o, f = L.f, u = L.u, k = 1 - GLC.seq++ * 1.5e-5, cx = GLC.cx, cy = GLC.cy;
+  let n = alpha < 255 ? GLC.nT : GLC.n;
+  const put = (U, V, Z, c) => {
+    const x = cp.x + cp.hx * U + rx * V, y = cp.y + cp.hy * U + ry * V, z = elev(x, y) + Z + U * pt + LIFT, o = n * 7;
+    f[o] = CAMX + (x - CAMX) * k; f[o + 1] = CAMY + (y - CAMY) * k; f[o + 2] = CAMZ + (z - CAMZ) * k; u[o + 3] = c; f[o + 4] = cx; f[o + 5] = cy; f[o + 6] = 399; n++;
+  };
+  const quad = (a, b, c, d, col) => {
+    if (n > GLC_V - 6) return;
+    const q = glsCol(NIGHT_K !== null ? nightTint(col, NIGHT_K) : col), p = (alpha << 24 | Math.min(255, q[2]) << 16 | Math.min(255, q[1]) << 8 | Math.min(255, q[0])) >>> 0;
+    put(...a, p); put(...b, p); put(...c, p); put(...a, p); put(...c, p); put(...d, p);
+  };
+  if (cu > u1) quad([u1, v0, z0], [u1, v1, z0], [u1, v1, z1], [u1, v0, z1], end);
+  if (cu < u0) quad([u0, v0, z0], [u0, v1, z0], [u0, v1, z1], [u0, v0, z1], end);
+  if (cv > v1) quad([u0, v1, z0], [u1, v1, z0], [u1, v1, z1], [u0, v1, z1], side);
+  if (cv < v0) quad([u0, v0, z0], [u1, v0, z0], [u1, v0, z1], [u0, v0, z1], side);
+  if (camZ > z1) quad([u0, v0, z1], [u1, v0, z1], [u1, v1, z1], [u0, v1, z1], top);
+  if (alpha < 255) GLC.nT = n; else GLC.n = n;
+}
+// A lamp: a soft disc facing the camera with a bright core, a little in front of the part it is on
+function glcHalo(x, y, z, rad, r, g, b, alpha) {
+  const dx = CAMX - x, dy = CAMY - y, dz = CAMZ - z, d = Math.hypot(dx, dy, dz) || 1, c = Math.cos(CAMYAW), s = Math.sin(CAMYAW), L = GLC.g, f = L.f, u = L.u, cx = GLC.cx, cy = GLC.cy;
+  const px = x + dx / d * 0.5, py = y + dy / d * 0.5, pz = z + dz / d * 0.5, R0 = Math.max(rad, d * 0.0035);
+  const put = (X, Y, Z, col) => { const o = GLC.nG * 7; f[o] = X; f[o + 1] = Y; f[o + 2] = Z; u[o + 3] = col; f[o + 4] = cx; f[o + 5] = cy; f[o + 6] = 399; GLC.nG++; };
+  const disc = (R, cr, cg, cb, a) => {
+    const mid = (Math.round(a * 255) << 24 | cb << 16 | cg << 8 | cr) >>> 0, rim = (cb << 16 | cg << 8 | cr) >>> 0;
+    for (let i = 0; i < 10 && GLC.nG < GLC_V - 3; i++) {
+      const a0 = i / 10 * Math.PI * 2, a1 = (i + 1) / 10 * Math.PI * 2;
+      put(px, py, pz, mid);
+      put(px - s * Math.cos(a0) * R, py + c * Math.cos(a0) * R, pz + Math.sin(a0) * R, rim);
+      put(px - s * Math.cos(a1) * R, py + c * Math.cos(a1) * R, pz + Math.sin(a1) * R, rim);
+    }
+  };
+  disc(R0, r, g, b, 0.62 * alpha);
+  disc(R0 * 0.34, Math.min(255, r + 110), Math.min(255, g + 110), Math.min(255, b + 110), alpha);
+}
+function glcUpload() {
+  const gl = GLT.gl, send = (vb, L, n) => { if (n) { gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(L.f.buffer, 0, n * 7), gl.DYNAMIC_DRAW); } };
+  send(GLC.vbo, GLC.o, GLC.n); send(GLC.tbo, GLC.t, GLC.nT); send(GLC.gbo, GLC.g, GLC.nG);
 }
 
 /* ---------- the WebGL scenery ---------- */
@@ -7315,6 +7381,8 @@ function glsRender(items, dt) {
     for (let i = 0; i < o.length; i += 3) { const od = Math.hypot(o[i] - CAMX, o[i + 1] - CAMY); if (od <= o[i + 2]) ds[nd++] = o[i + 2] > 400 ? od + 1e6 : od; }
   }
   if (GLS.fanDs) { for (const d of GLS.fanDs) { if (nd >= ds.length) break; ds[nd++] = d; } }
+  for (const d of GLC.ds) { if (nd >= ds.length) break; ds[nd++] = d; }
+  glcUpload();
   const sorted = ds.subarray(0, nd).sort();
   const below = v => { let a = 0, b = nd; while (a < b) { const m = (a + b) >> 1; if (sorted[m] < v) a = m + 1; else b = m; } return a; };
   // One slice: only the scenery whose center lies in [near, far); the depth stays, so it still sorts with what went before
@@ -7335,6 +7403,7 @@ function glsRender(items, dt) {
       gl.drawElements(gl.TRIANGLES, p.nO, gl.UNSIGNED_SHORT, 0);
     }
     if (GLS.dynN) { gl.bindBuffer(gl.ARRAY_BUFFER, GLS.dyn); attribs(); gl.drawArrays(gl.TRIANGLES, 0, GLS.dynN); }
+    if (GLC.n) { gl.bindBuffer(gl.ARRAY_BUFFER, GLC.vbo); attribs(); gl.drawArrays(gl.TRIANGLES, 0, GLC.n); }
     gl.depthMask(false);   // the see-through faces (the catch fence, the seat rows) after the solid ones
     for (const ch of vis) for (const p of ch.parts) {
       if (!p.nT) continue;
@@ -7342,6 +7411,8 @@ function glsRender(items, dt) {
       gl.drawElements(gl.TRIANGLES, p.nT, gl.UNSIGNED_SHORT, p.nO * 2);
     }
     if (GLS.glowN) { gl.bindBuffer(gl.ARRAY_BUFFER, GLS.glow); attribs(); gl.drawArrays(gl.TRIANGLES, 0, GLS.glowN); }
+    if (GLC.nT) { gl.bindBuffer(gl.ARRAY_BUFFER, GLC.tbo); attribs(); gl.drawArrays(gl.TRIANGLES, 0, GLC.nT); }
+    if (GLC.nG) { gl.bindBuffer(gl.ARRAY_BUFFER, GLC.gbo); attribs(); gl.drawArrays(gl.TRIANGLES, 0, GLC.nG); }
     gl.depthMask(true);
     ctx.drawImage(T.cv, -P, -P, Wc, Hc);
   };
@@ -7493,7 +7564,7 @@ function drawPlotMarks() {
 }
 // Its standing pieces: light poles on islands down the middle of each row, and cars parked here and there
 function addPlotItems(items, dist) {
-  const add = (cx, cy, fn) => { if (dist(cx, cy) < 220) items.push({d: dist(cx, cy), fn}); };
+  const add = (cx, cy, fn) => { if (dist(cx, cy) < 220) glcItem(items, dist(cx, cy), cx, cy, fn); };
   for (const y0 of PLOT.rows) {
     const mid = y0 + PLOT.rowD / 2;
     for (const x of [110, 200, 290]) {
@@ -7548,18 +7619,19 @@ function draw(dt) {
   // Standing objects, far to near
   const items = [];
   const dist = (x, y) => Math.hypot(x - CAMX, y - CAMY);
+  const glS = glsOn();   // the trees, towns, stadium, fans and vehicles are on the graphics chip (glsRender), or else painted here
+  glcBegin(glS);
   if (MAP_KIND === 'lot') addLotItems(items, dist);
   if (isPlot()) addPlotItems(items, dist);
   if (isDirt()) addDirtItems(items, dist);
-  const glS = glsOn();   // the trees, towns, stadium and fans are on the graphics chip (glsRender), or else painted here
   if (isOvalMap() && !glS) addOvalItems(items, dist);
   if (MAP_KIND === 'airfield') addAirfieldItems(items, dist);
   if (isForestMap() && !SHOWCASE && !glS) addFanItems(items, dist, dt);
   if (SHOWCASE) {
     const p = SHOW_POSE();
-    items.push({d: dist(p.pickup.x, p.pickup.y), fn: () => drawPosed(drawTruckModel, p.pickup.x, p.pickup.y, p.pickup.h)});
-    items.push({d: dist(p.celica.x, p.celica.y), fn: () => drawPosed(drawCelicaModel, p.celica.x, p.celica.y, p.celica.h)});
-  } else if (VIEW === 'chase') items.push({d: 9, fn: drawPlayerCar});
+    glcItem(items, dist(p.pickup.x, p.pickup.y), p.pickup.x, p.pickup.y, () => drawPosed(drawTruckModel, p.pickup.x, p.pickup.y, p.pickup.h));
+    glcItem(items, dist(p.celica.x, p.celica.y), p.celica.x, p.celica.y, () => drawPosed(drawCelicaModel, p.celica.x, p.celica.y, p.celica.h));
+  } else if (VIEW === 'chase') { if (GLC.on) glcItem(items, dist(S.x, S.y), S.x, S.y, drawPlayerCar); else items.push({d: 9, fn: drawPlayerCar}); }
   if (!SHOWCASE && RACE !== null) addRaceItems(items, dist);
   if (!SHOWCASE && EVT !== null) addEventItems(items, dist);
   if (!SHOWCASE) addExhaustItems(items, dist);
@@ -11697,7 +11769,7 @@ function addEventItems(items, dist) {
   // The ghost: the recorded car, see-through, where it was at this moment of its run
   if (RX.ghost) {
     const g = ghostPose(RX.ghost, Math.max(0, RX.t)), d = dist(g.x, g.y);
-    if (d < 350 && d > 1.5 && !hiddenByTerrain(g.x, g.y)) items.push({d, fn: () => { const a = ctx.globalAlpha; ctx.globalAlpha = 0.42; drawOther(RX.ghost.car, g.x, g.y, g.h, RX.ghost.paint || CARS[RX.ghost.car].paint); ctx.globalAlpha = a; }});
+    if (d < 350 && d > 1.5 && !hiddenByTerrain(g.x, g.y)) glcItem(items, d, g.x, g.y, () => { const a = ctx.globalAlpha; ctx.globalAlpha = 0.42; drawOther(RX.ghost.car, g.x, g.y, g.h, RX.ghost.paint || CARS[RX.ghost.car].paint); ctx.globalAlpha = a; });
   }
   // Gate posts either side of each checkpoint, with a flag on top: yellow for the next one, gray for the rest
   if (RX.cps) RX.cps.forEach((cu, k) => {
@@ -11712,7 +11784,7 @@ function addEventItems(items, dist) {
   });
   for (const ai of RX.ais) {
     const p = aiPose(ai), d = dist(p.x, p.y);
-    if (d < 350 && !hiddenByTerrain(p.x, p.y)) items.push({d, fn: () => drawOther(ai.body, p.x, p.y, p.h, ai.paint)});
+    if (d < 350 && !(GLC.on ? false : hiddenByTerrain(p.x, p.y))) glcItem(items, d, p.x, p.y, () => drawOther(ai.body, p.x, p.y, p.h, ai.paint));
   }
 }
 // Racing in the current car
