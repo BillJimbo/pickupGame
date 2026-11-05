@@ -467,6 +467,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
       <button type="button" data-map="lot">Training lot</button>
       <button type="button" data-map="suburb">Maple Grove</button>
       <button type="button" data-map="city">Downtown</button>
+      <button type="button" data-map="night">Midnight City</button>
     </div>
     <p class="tt-hint" id="mapHint"></p>
     </section>
@@ -475,12 +476,16 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
         <div class="seg" id="wxPick" role="group" aria-label="Weather"><button type="button" data-wx="dry" class="on">Dry</button><button type="button" data-wx="rain">Rain</button></div>
         <p class="tt-hint" id="wxHint"></p></div>
       <div><h3 class="tt-h"><b>3</b>Mode</h3>
-        <div class="seg" id="modePick" role="group" aria-label="Mode"><button type="button" data-mode="free" class="on">Free drive</button><button type="button" data-mode="timed">Timed run</button><button type="button" data-mode="ghost">Race a ghost</button></div>
+        <div class="seg" id="modePick" role="group" aria-label="Mode"><button type="button" data-mode="free" class="on">Free drive</button><button type="button" data-mode="timed">Timed run</button><button type="button" data-mode="street">Street race</button><button type="button" data-mode="ghost">Race a ghost</button></div>
         <div class="tt-mode" data-for="free"><p class="tt-hint">No clock and no laps: take any car anywhere.</p></div>
         <div class="tt-mode" data-for="timed" hidden>
           <div class="seg" id="runPick" role="group" aria-label="Laps" style="margin-top:10px"><span>Laps</span><button type="button" data-laps="1" class="on">1</button><button type="button" data-laps="2">2</button><button type="button" data-laps="3">3</button><button type="button" data-laps="5">5</button></div>
           <p class="tt-hint">A standing start against the clock, with checkpoints like a race. Your drive is <b>recorded as a ghost</b>: at the finish you can <b>Save ghost file</b> to send to a friend, or race it yourself.</p>
           <label class="tt-name">Your name on the ghost <input type="text" id="drvName" maxlength="24" placeholder="Anonymous" aria-label="Your name, saved in your ghost files"></label>
+        </div>
+        <div class="tt-mode" data-for="street" hidden>
+          <div class="seg" id="streetPick" role="group" aria-label="Laps" style="margin-top:10px"><span>Laps</span><button type="button" data-laps="1" class="on">1</button><button type="button" data-laps="2">2</button><button type="button" data-laps="3">3</button></div>
+          <p class="tt-hint">Five racers from your car's class on Midnight City, swerving through the traffic with you. Takes you to Midnight City.</p>
         </div>
         <div class="tt-mode" data-for="ghost" hidden>
           <p class="tt-hint">Load a ghost file someone sent you (or one of your own). You race it on the same track and in the same weather. Race the ghost puts you in its car with its parts; or pick any car from the list below to race it in that one, with your own setup.</p>
@@ -2237,6 +2242,12 @@ const FOREST_ROUTE = smoothLoop([[0, 0], [140, 0], [230, -25], [268, -75], [245,
   [770, -200], [730, -160], [700, -110], [735, -70], [765, -20], [745, 25],
   [670, 45], [590, 40], [555, 62], [552, 90], [575, 110], [650, 118], [690, 140], [688, 168], [650, 185], [560, 195],
   [430, 190], [340, 150], [240, 172], [150, 205], [60, 175], [-10, 115], [-28, 45]]);
+// Midnight City: a 4 km street circuit, long boulevards with squared-off corners and a jog in the middle, four lanes wide
+// (CFG.RW 7.5). Its closest separate stretches are well over 100 m apart, for the city blocks between them.
+const NIGHT_ROUTE = smoothLoop([[0, 0], [300, 0], [600, 0], [690, 8], [720, 50], [720, 180], [735, 235], [790, 260], [900, 260], [950, 290], [960, 350], [960, 520], [930, 575], [870, 590],
+  [640, 590], [590, 570], [570, 520], [570, 420], [545, 375], [495, 360], [330, 360], [280, 380], [262, 430], [262, 560], [240, 610], [190, 625], [-60, 625], [-110, 600], [-125, 550],
+  [-125, 400], [-100, 350], [-50, 335], [60, 335], [110, 315], [125, 265], [110, 215], [60, 195], [-60, 195], [-110, 170], [-125, 120], [-120, 50], [-90, 10], [-40, 0]]);
+const isNightMap = () => MAP_KIND === 'night' || MAP_KIND === 'nightR';
 const isFlatMap = k => k === 'oval' || k === 'ovalR' || k === 'airfield';
 // The loose-surface maps: the dirt scramble course and the rally stage, both ways
 const isDirtMap = k => k === 'dirt' || k === 'rally' || k === 'rallyR' || k === 'forest' || k === 'forestR';
@@ -2300,14 +2311,14 @@ const isPlot = () => MAP_KIND === 'plot' || MAP_KIND === 'plotR';
 function setMap(kind) {
   if (MAP_KIND === kind) return;
   MAP_KIND = kind;
-  CFG.RW = kind === 'forest' || kind === 'forestR' ? 3.6 : kind === 'suburb' || kind === 'rally' || kind === 'rallyR' || kind === 'pass' || kind === 'passR' ? 4 : isFlatMap(kind) ? 6 : 5;   // narrow streets and mountain roads, a wide speedway and airfield
+  CFG.RW = kind === 'night' || kind === 'nightR' ? 7.5 : kind === 'forest' || kind === 'forestR' ? 3.6 : kind === 'suburb' || kind === 'rally' || kind === 'rallyR' || kind === 'pass' || kind === 'passR' ? 4 : isFlatMap(kind) ? 6 : 5;   // narrow streets and mountain roads, a wide speedway and airfield
   if (kind === 'suburb' || kind === 'city') buildNetwork(kind === 'city' ? CITY_SEGS : SUBURB_SEGS);
-  else buildRoute(kind === 'lot' ? LOT_ROUTE : kind === 'strip' ? STRIP_ROUTE
+  else buildRoute(kind === 'night' ? NIGHT_ROUTE : kind === 'nightR' ? reversed(NIGHT_ROUTE) : kind === 'lot' ? LOT_ROUTE : kind === 'strip' ? STRIP_ROUTE
     : kind === 'circuitR' ? reversed(CIRCUIT_ROUTE) : kind === 'short' ? SHORT_ROUTE : kind === 'shortR' ? reversed(SHORT_ROUTE)
     : kind === 'plot' ? PLOT_ROUTE : kind === 'plotR' ? reversed(PLOT_ROUTE) : kind === 'dirt' ? DIRT_ROUTE : kind === 'rally' ? RALLY_ROUTE : kind === 'rallyR' ? reversed(RALLY_ROUTE) : kind === 'forest' ? FOREST_ROUTE : kind === 'forestR' ? reversed(FOREST_ROUTE) : kind === 'oval' ? OVAL_ROUTE : kind === 'ovalR' ? reversed(OVAL_ROUTE)
     : kind === 'airfield' ? AIRFIELD_ROUTE : kind === 'pass' ? PASS_ROUTE : kind === 'passR' ? reversed(PASS_ROUTE) : CIRCUIT_ROUTE);
   DIRT_BALES.length = 0; if (isDirtMap(kind) && kind !== 'forest' && kind !== 'forestR') placeBales();   // (the forest stage has a crowd instead)
-  FANS = null; AIRF_CONES = null;
+  FANS = null; AIRF_CONES = null; NIGHT = null;
   CFG.offMax = kind === 'lot' || isPlot() ? 200 : 40;   // the lot is open pavement, so it is not bogged down near the lines
   RM.d = null;
 }
@@ -2320,7 +2331,7 @@ function elev(x, y) {
   if (MAP_KIND === 'strip' || isPlot() || isFlatMap(MAP_KIND)) return 0;
   if (MAP_KIND === 'forest' || MAP_KIND === 'forestR') return 1.6 * (9 * Math.sin(x / 170 + 0.6) * Math.cos(y / 150) + 5 * Math.sin(x / 70 - y / 90 + 1.7));   // the wooded hillside
   if (MAP_KIND === 'pass' || MAP_KIND === 'passR') return 2.6 * (9 * Math.sin(x / 170 + 0.6) * Math.cos(y / 150) + 5 * Math.sin(x / 70 - y / 90 + 1.7));   // the mountains
-  if (MAP_KIND === 'city') return 0;   // downtown is flat
+  if (MAP_KIND === 'city' || isNightMap()) return 0;   // downtown and Midnight City are flat
   if (MAP_KIND === 'suburb') return 2.5 * Math.sin(x / 130 + 0.4) * Math.cos(y / 160) + 1.2 * Math.sin((x + y) / 70);   // gentle rises
   if (MAP_KIND === 'lot') {
     // A smooth 5 m mound on the hill lane (y = 75). It eases up from 175 m to 235 m, steepest (about 12%)
@@ -2453,7 +2464,7 @@ function newState() {
     elapsed: 0, lap: 0, lapStart: 0, best: null, lastU: 0, reds: 0, corners: 0, crashes: 0, stalls: 0, grinds: 0, offT: 0, grinding: false, grindT: 0,
     cornerDone: ROUTE.map(() => false),
     traffic: makeTraffic(0),
-    city: MAP_KIND === 'lot' || MAP_KIND === 'city' ? [] : MAP_KIND === 'suburb' ? suburbTrees() : makeCity()
+    city: MAP_KIND === 'lot' || MAP_KIND === 'city' || isNightMap() ? [] : MAP_KIND === 'suburb' ? suburbTrees() : makeCity()
   };
 }
 let S = newState();
@@ -4236,8 +4247,9 @@ function physics(dt) {
   S.y += (Vx * Math.sin(S.h) + S.vy * Math.cos(S.h)) * dt;
 
   if (isOvalMap()) ovalWalls(dt);
+  if (isNightMap()) nightWalls(dt);
   // The lot is all pavement, so nothing on it is off the road. The circuit keeps its grass.
-  const lotOpen = MAP_KIND === 'lot' || isOvalMap();   // (the speedway is walled in and paved)
+  const lotOpen = MAP_KIND === 'lot' || isOvalMap() || isNightMap();   // (the speedway is walled in and paved)
   const d = lotOpen ? 0 : distToRoad(S.x, S.y);
   S.off = !lotOpen && d > CFG.RW && !(MAP_KIND === 'airfield' && airfieldPaved(S.x, S.y));   // the airfield's runway, taxiways and aprons are pavement
   if (S.off && S.started) S.offT += dt;
@@ -4683,7 +4695,7 @@ const isPassMap = () => MAP_KIND === 'pass' || MAP_KIND === 'passR';
 function drawSky() {
   // The view spans VW / F radians of the panorama, which is a full turn across SKY_W pixels
   // The title keeps the sunset; the game modes use the midday sky
-  const TEX = SHOWCASE ? SKY : isPassMap() ? SKY_ALPINE : isForestMap() ? SKY_AUTUMN : SKY_DAY;
+  const TEX = SHOWCASE ? SKY : isNightMap() ? SKY_NIGHT : isPassMap() ? SKY_ALPINE : isForestMap() ? SKY_AUTUMN : SKY_DAY;
   const P = VIEW_PAD, W2 = VW + 2 * P;   // wider than the screen while the cockpit view is rolled, so no corner is left bare
   if (P) ctx.translate(-P, 0);
   const sw = (W2 / F) / (Math.PI * 2) * SKY_W;
@@ -4694,8 +4706,8 @@ function drawSky() {
   ctx.drawImage(TEX, src, 0, first, SKY_H, 0, -P, first * scale, HOR + 2 + P);
   if (first < sw) ctx.drawImage(TEX, 0, 0, sw - first, SKY_H, first * scale, -P, (sw - first) * scale, HOR + 2 + P);
   if (P) ctx.translate(P, 0);
-  ctx.fillStyle = !SHOWCASE && isPassMap() ? '#5d6450' : '#3f5b2c'; ctx.fillRect(-P, HOR, W2, VH - HOR + P);
-  if (S.rain && !SHOWCASE) { ctx.fillStyle = snowing() ? `rgba(198,204,212,${0.86 * S.rain})` : `rgba(104,112,122,${0.82 * S.rain})`; ctx.fillRect(-P, -P, W2, HOR + 2 + P); }   // overcast (pale with snow)
+  ctx.fillStyle = !SHOWCASE && isNightMap() ? '#0d0e14' : !SHOWCASE && isPassMap() ? '#5d6450' : '#3f5b2c'; ctx.fillRect(-P, HOR, W2, VH - HOR + P);
+  if (S.rain && !SHOWCASE) { ctx.fillStyle = isNightMap() ? `rgba(12,13,22,${0.7 * S.rain})` : snowing() ? `rgba(198,204,212,${0.86 * S.rain})` : `rgba(104,112,122,${0.82 * S.rain})`; ctx.fillRect(-P, -P, W2, HOR + 2 + P); }   // overcast (pale with snow)
 }
 
 // One straight piece of road: sidewalks, asphalt, curb lines, center dashes and a stop bar at the next signal.
@@ -4813,6 +4825,38 @@ const SKY_AUTUMN = (() => {
     g.fillStyle = col; g.beginPath(); g.moveTo(0, SKY_H);
     for (let x = 0; x <= SKY_W; x += 4) { const u = 2 * Math.PI * x / SKY_W; g.lineTo(x, SKY_H - (base + amp * Math.sin(3 * u + base) + amp * 0.5 * Math.sin(7 * u + 1.3) + 4 * Math.sin(53 * u))); }
     g.lineTo(SKY_W, SKY_H); g.closePath(); g.fill();
+  }
+  return c;
+})();
+// The night sky over Midnight City: deep blue, stars, a moon, and a far skyline of lit towers with an orange city glow
+const SKY_NIGHT = (() => {
+  const c = document.createElement('canvas');
+  c.width = SKY_W; c.height = SKY_H;
+  const g = c.getContext('2d'), rnd = seeded(404);
+  const grad = g.createLinearGradient(0, 0, 0, SKY_H);
+  grad.addColorStop(0, '#04060f'); grad.addColorStop(0.55, '#0b1026'); grad.addColorStop(0.82, '#2a1c3c'); grad.addColorStop(0.95, '#5a2f46'); grad.addColorStop(1, '#7a4238');
+  g.fillStyle = grad; g.fillRect(0, 0, SKY_W, SKY_H);
+  for (let i = 0; i < 420; i++) {
+    const y = rnd() * SKY_H * 0.72;
+    g.fillStyle = `rgba(${215 + rnd() * 40 | 0},${215 + rnd() * 40 | 0},255,${0.25 + rnd() * 0.65})`;
+    g.fillRect(rnd() * SKY_W, y, rnd() < 0.08 ? 2 : 1, rnd() < 0.08 ? 2 : 1);
+  }
+  const mx = SKY_W * 0.31, my = SKY_H * 0.26, mr = SKY_H * 0.05, halo = g.createRadialGradient(mx, my, mr * 0.5, mx, my, mr * 4);
+  halo.addColorStop(0, 'rgba(190,205,240,0.28)'); halo.addColorStop(1, 'rgba(190,205,240,0)');
+  g.fillStyle = halo; g.fillRect(mx - mr * 4, my - mr * 4, mr * 8, mr * 8);
+  g.fillStyle = '#e4e7ee'; g.beginPath(); g.arc(mx, my, mr, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'rgba(160,168,186,0.5)'; g.beginPath(); g.arc(mx - mr * 0.3, my - mr * 0.15, mr * 0.2, 0, 7); g.arc(mx + mr * 0.25, my + mr * 0.3, mr * 0.28, 0, 7); g.fill();
+  // Two rows of far towers: the farther bluer, each with its windows lit at random
+  for (const [col, lo, hi, lit] of [['#141328', 0.1, 0.26, 0.2], ['#0a0a16', 0.04, 0.17, 0.32]]) {
+    for (let x = 0; x < SKY_W;) {
+      const w = 8 + rnd() * 22, h = SKY_H * (lo + rnd() * rnd() * hi), y = SKY_H - h;
+      g.fillStyle = col; g.fillRect(x, y, w + 1, h);
+      for (let wy = y + 2; wy < SKY_H - 2; wy += 3) for (let wx = x + 2; wx < x + w - 2; wx += 3) {
+        if (rnd() > lit) continue;
+        g.fillStyle = rnd() < 0.7 ? 'rgba(255,208,130,0.8)' : 'rgba(170,205,255,0.7)'; g.fillRect(wx, wy, 1, 1);
+      }
+      x += w + rnd() * 3;
+    }
   }
   return c;
 })();
@@ -5277,7 +5321,7 @@ function drawBoxNow(cp, u0, u1, v0, v1, z0, z1, side, top, end, lamps) {
   const cu = (CAMX - cp.x) * cp.hx + (CAMY - cp.y) * cp.hy;
   const cv = (CAMX - cp.x) * rx + (CAMY - cp.y) * ry;
   const camZ = CAMZ - elev(cp.x, cp.y);
-  const quad = (a, b, c, d, col) => seamFill([P(...a), P(...b), P(...c), P(...d)], col);
+  const quad = (a, b, c, d, col) => seamFill([P(...a), P(...b), P(...c), P(...d)], NIGHT_K >= 0 ? nightTint(col, NIGHT_K) : col);
   const dot = (u, v, z, col) => {
     const p = P(u, v, z);
     if (!p) return;
@@ -5504,13 +5548,16 @@ function drawShapeModelRaw(car) {
 }
 // Any car's model, by its body
 function drawModelOf(b) {
+  const night = isNightMap() && !SHOWCASE;
+  if (night) NIGHT_K = nightCarLevel(S.x, S.y);   // (Midnight City: the parts darken, and its lamps come on)
   if (b === 'celica') drawCelicaModel();
   else if (b === 'ram') drawRamModel();
   else if (CARS[b] && CARS[b].shape) queued(() => drawShapeModelRaw(CARS[b]));
   else drawTruckModel();
+  if (night) { NIGHT_K = -1; drawCarLights(b); }
 }
 // The player's car from outside, whichever it is
-function drawPlayerCar() { BODY_PITCH = S.pitch; DRAW_PLAYER = true; LIFT = S.hz || 0; drawModelOf(CFG.body); LIFT = 0; DRAW_PLAYER = false; BODY_PITCH = 0; }
+function drawPlayerCar() { BODY_PITCH = S.pitch; DRAW_PLAYER = true; LIFT = S.hz || 0; NIGHT_CAR = {brake: S.brake > 0.1}; drawModelOf(CFG.body); NIGHT_CAR = null; LIFT = 0; DRAW_PLAYER = false; BODY_PITCH = 0; }
 let LIFT = 0;   // how high a hop has the player's car off the ground, while it is drawn
 // Another car (an AI racer) at a spot, in its own paint. The models read the paint and wheel size from the live
 // settings, so those are swapped in for the moment it is drawn.
@@ -5614,7 +5661,8 @@ const RAIN = [];
 function drawRain(dt) {
   if (snowing()) return drawSnow(dt);
   const haze = ctx.createLinearGradient(0, HOR - VH * 0.25, 0, VH);
-  haze.addColorStop(0, `rgba(150,158,168,${0.5 * S.rain})`); haze.addColorStop(0.35, `rgba(140,148,158,${0.28 * S.rain})`); haze.addColorStop(1, `rgba(120,128,138,${0.12 * S.rain})`);
+  const hz = isNightMap() ? [30, 28, 44] : [150, 158, 168];   // (at night the rain's haze is dark, with a little city glow)
+  haze.addColorStop(0, `rgba(${hz},${0.5 * S.rain})`); haze.addColorStop(0.35, `rgba(${hz.map(v => v - 10)},${0.28 * S.rain})`); haze.addColorStop(1, `rgba(${hz.map(v => v - 22)},${0.12 * S.rain})`);
   ctx.fillStyle = haze; ctx.fillRect(0, 0, VW, VH);
   const n = Math.round((LOWG() ? 100 : 260) * S.rain), lean = clamp(Math.abs(S.v) / 40, 0, 1) * 0.5;
   if (RAIN.length > n) RAIN.length = n;
@@ -5839,7 +5887,7 @@ function surfaceAt(x, y) {
   }
   const i = Math.floor((x - RM.ox) / RM.R), j = Math.floor((y - RM.oy) / RM.R);
   const v = (i >= 0 && j >= 0 && i < RM.w && j < RM.h) ? RM.d[j * RM.w + i] : 0;
-  return v || (MAP_KIND === 'city' ? 2 : 0);   // downtown is paved: concrete wherever there is no road
+  return v || (MAP_KIND === 'city' || isNightMap() ? 2 : 0);   // downtown is paved: concrete wherever there is no road
 }
 // The sun's direction: low at sunset on the title, high at midday in the game modes
 const SUN_DIR_SUNSET = (() => { const a = 1.1, v = [Math.cos(a), Math.sin(a), 0.35], n = Math.hypot(...v); return v.map(c => c / n); })();
@@ -5854,6 +5902,7 @@ function drawTerrain() {
   const snow = snowing(), wet = S.rain && !SHOWCASE && !snow ? 1 - 0.28 * S.rain : 1;   // wet ground is darker; snow is not
   const pass = !SHOWCASE && isPassMap();   // the mountain pass has its own ground and road colors
   const forest = !SHOWCASE && isForestMap();   // the forest stage: a floor of fallen leaves
+  const nightG = isNightMap();
   for (let x = -VIEW_PAD; x < VW + VIEW_PAD; x += step) {   // (past the screen's sides while the cockpit view is rolled)
     const k = (x + 2 - VW / 2) / F;              // lateral ratio for this column
     let top = VH + VIEW_PAD;
@@ -5871,7 +5920,7 @@ function drawTerrain() {
         const n = Math.hypot(gx, gy, 1);
         const dot = Math.max(0, (-gx * SD[0] - gy * SD[1] + SD[2]) / n);
         const sf = surfaceAt(wx, wy), b = (0.45 + 0.6 * dot) * wet;
-        const base = forest && sf === 0 ? forestFloor(wx, wy) : snow ? SNOW_PAL[sf] || SNOW_PAL[0] : pass ? (sf === 0 ? alpineGround(g, wx, wy) : PASS_PAL[sf] || TERRAIN_PAL[sf]) : TERRAIN_PAL[sf];
+        const base = nightG ? nightGround(wx, wy, sf) : forest && sf === 0 ? forestFloor(wx, wy) : snow ? SNOW_PAL[sf] || SNOW_PAL[0] : pass ? (sf === 0 ? alpineGround(g, wx, wy) : PASS_PAL[sf] || TERRAIN_PAL[sf]) : TERRAIN_PAL[sf];
         ctx.fillStyle = `rgb(${base[0] * b | 0},${base[1] * b | 0},${base[2] * b | 0})`;
         ctx.fillRect(x, Math.floor(y), step, Math.ceil(top - y) + 1);
         top = y;
@@ -5945,6 +5994,7 @@ function glInit() {
 // The ground color at a point, exactly as the ray march picks it (before the sun shading)
 function groundRgb(wx, wy, flags) {
   const sf = surfaceAt(wx, wy);
+  if (isNightMap()) return nightGround(wx, wy, sf);
   if (flags.forest && sf === 0) return forestFloor(wx, wy);
   if (flags.snow) return SNOW_PAL[sf] || SNOW_PAL[0];
   if (flags.pass) return sf === 0 ? alpineGround(elev(wx, wy), wx, wy) : PASS_PAL[sf] || TERRAIN_PAL[sf];
@@ -6033,6 +6083,516 @@ function glTerrain() {
   ctx.drawImage(GLT.cv, -P, -P, Wc, Hc);   // into the 2D picture, where the ground has always gone
   return true;
 }
+/* ---------- Midnight City ---------- */
+// A street circuit at night ('night', 'nightR'): 4 km of four-lane road between lit office blocks, with concrete
+// barriers along both sides, street lamps, neon signs, a wet shine on the road, dumb two-way traffic (trafficStep) and
+// racers who swerve through it (nightAi). Everything that stands still is laid out once by nightData as boxes and
+// flat polygons with their night colors already in them, drawn on the graphics chip by glsNight or, on the Classic
+// renderer, by addNightItems. The ground's light is baked from a grid of lamp and neon pools (nightLight, nightGround).
+// Cars keep their day colors in their parts lists: drawModelOf darkens them while they are drawn (NIGHT_K, nightTint).
+let NIGHT = null, NIGHT_K = -1, NIGHT_CAR = null;
+const rgbS = (r, g, b) => `rgb(${r | 0},${g | 0},${b | 0})`;
+const NEON = [[255, 47, 146], [47, 230, 255], [57, 255, 122], [255, 181, 46], [164, 107, 255], [255, 59, 59], [255, 240, 90]];
+const NIGHT_WORDS = ['HOTEL', 'BAR', 'NOODLES', 'ARCADE', 'TIRES', 'MOTEL', 'DINER', 'PIZZA', 'GARAGE', 'OPEN', '24H', 'CLUB', 'TACOS', 'PAWN', 'SUSHI', 'GINOS', 'BILLS', 'NEON', 'KARAOKE', 'BOWL'];
+// A little block font for the signs: five rows of five
+const NIGHT_FONT = {A: '.###.#...#######...##...#', B: '####.#...#####.#...#####.', C: '.#####....#....#.....####', D: '####.#...##...##...#####.', E: '######....####.#....#####', G: '.#####....#..###...#.###.', H: '#...##...#######...##...#', I: '#####..#....#....#..#####', K: '#...##..#.###..#..#.#...#', L: '#....#....#....#....#####', M: '#...###.###.#.##...##...#', N: '#...###..##.#.##..###...#', O: '.###.#...##...##...#.###.', P: '####.#...#####.#....#....', R: '####.#...#####.#..#.#...#', S: '.#####.....###.....#####.', T: '#####..#....#....#....#..', U: '#...##...##...##...#.###.', W: '#...##...##.#.###.###...#', Y: '#...#.#.#...#....#....#..', 2: '####.....#.###.#....#####', 4: '#...##...######....#....#'};
+function nightData() {
+  if (NIGHT) return NIGHT;
+  const rnd = seeded(1977), W = CFG.RW, L = ROUTE_LEN, buildings = [], lamps = [], signs = [], barrier = [];
+  // A block: its footprint must clear the road and every other block
+  const free = (x, y, hx, hy, w, d) => {
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [0, 1], [-1, 0], [1, 0], [0, 0]]) if (distToRoad(x + hx * a * w / 2 - hy * b * d / 2, y + hy * a * w / 2 + hx * b * d / 2) < W + 5.6) return false;
+    const r = Math.hypot(w, d) / 2 * 0.85;
+    return !buildings.some(o => Math.hypot(o.x - x, o.y - y) < r + o.r);
+  };
+  const place = (u, side, off, w, d, h, reach) => {
+    const p = roadside(((u + w / 2) % L + L) % L, side * off);
+    if (!free(p.x, p.y, p.dx, p.dy, w, d)) return false;
+    const v = 22 + rnd() * 20, tintB = rnd() * 12;
+    const b = {x: p.x, y: p.y, hx: p.dx, hy: p.dy, s: -side, w, d, h, reach, r: Math.hypot(w, d) / 2 * 0.85, side: rgbS(v, v, v + 8 + tintB), top: rgbS(v * 0.6, v * 0.6, v * 0.7 + 4), end: rgbS(v * 0.8, v * 0.8, v * 0.9 + 6), decor: []};
+    buildings.push(b);
+    return b;
+  };
+  const decorate = (b, front) => {
+    const rx = -b.hy, ry = b.hx, faces = [
+      {c: [rx * b.s * b.d / 2, ry * b.s * b.d / 2], ax: [b.hx * b.s, b.hy * b.s], n: [rx * b.s, ry * b.s], len: b.w, main: true},
+      {c: [-rx * b.s * b.d / 2, -ry * b.s * b.d / 2], ax: [-b.hx * b.s, -b.hy * b.s], n: [-rx * b.s, -ry * b.s], len: b.w},
+      {c: [b.hx * b.w / 2, b.hy * b.w / 2], ax: [rx, ry], n: [b.hx, b.hy], len: b.d},
+      {c: [-b.hx * b.w / 2, -b.hy * b.w / 2], ax: [-rx, -ry], n: [-b.hx, -b.hy], len: b.d}];
+    for (const f of faces) {
+      // A point on this face: a meters to the viewer's right of its middle, at height z, standing t proud of the wall
+      const P = (a, z, t) => [b.x + f.c[0] + f.ax[0] * a + f.n[0] * t, b.y + f.c[1] + f.ax[1] * a + f.n[1] * t, z];
+      const add = (a0, a1, z0, z1, t, col, fine) => b.decor.push({pts: [P(a0, z0, t), P(a1, z0, t), P(a1, z1, t), P(a0, z1, t)], col, nx: f.n[0], ny: f.n[1], fine});
+      const lit = f.main ? 0.4 : 0.24, half = f.len / 2 - 1;
+      for (let z = 6.4; z < b.h - 2; z += 3.6) {
+        add(-half, half, z - 0.2, z + 1.9, 0.05, 'rgb(13,17,28)', true);   // a band of dark glass, then its lit windows
+        for (let a = -half + 1.5; a < half - 1; a += 3.2) {
+          if (rnd() > lit) continue;
+          const q = rnd(), col = q < 0.6 ? 'rgb(255,212,138)' : q < 0.8 ? 'rgb(176,208,255)' : q < 0.9 ? 'rgb(120,226,214)' : 'rgb(150,120,80)';
+          add(a - 1, a + 1, z, z + 1.7, 0.1, col, rnd() < 0.7);
+        }
+      }
+      if (!f.main || !front) continue;
+      // The street: a lit shopfront, and most blocks have a neon sign over it
+      add(-half, half, 0.3, 3.5, 0.08, 'rgb(62,52,44)');
+      for (let a = -half + 1; a < half - 2; a += 5.5) add(a, a + 4.6, 0.7, 3.2, 0.12, rnd() < 0.7 ? 'rgb(255,226,170)' : 'rgb(190,226,255)');
+      const n = NEON[Math.floor(rnd() * NEON.length)], ns = rgbS(...n), word = NIGHT_WORDS[Math.floor(rnd() * NIGHT_WORDS.length)];
+      const vertical = b.h > 24 && rnd() < 0.4;
+      if (rnd() > 0.72) continue;
+      const letter = (ch, a0, z1, c, t) => {
+        const g = NIGHT_FONT[ch];
+        if (!g) return;
+        for (let row = 0; row < 5; row++) for (let i = 0; i < 5; i++) {
+          if (g[row * 5 + i] !== '#') continue;
+          let e = i; while (e < 4 && g[row * 5 + e + 1] === '#') e++;
+          add(a0 + i * c, a0 + (e + 1) * c, z1 - (row + 1) * c, z1 - row * c, t, ns);
+          i = e;
+        }
+      };
+      let sx, sz, sr;
+      if (vertical) {
+        const c = 0.5, a0 = -half + 1.5, top = Math.min(b.h - 3, 7.5 + word.length * 6 * c);
+        add(a0 - c, a0 + 6 * c, top - word.length * 6 * c - c * 0.5, top + c, 0.18, 'rgb(12,12,20)');
+        [...word].forEach((ch, k) => letter(ch, a0, top - k * 6 * c, c, 0.26));
+        sx = a0 + 2.5 * c; sz = top - word.length * 3 * c; sr = 7;
+      } else {
+        const c = Math.min(0.46, (f.len * 0.8) / (word.length * 6)), wd = word.length * 6 * c, a0 = -wd / 2;
+        add(a0 - c, a0 + wd + c * 0.4, 3.75, 3.75 + 7 * c, 0.18, 'rgb(12,12,20)');
+        add(a0 - c, a0 + wd + c * 0.4, 3.75 + 7 * c, 3.75 + 7.25 * c, 0.24, ns);
+        add(a0 - c, a0 + wd + c * 0.4, 3.75 - 0.25 * c, 3.75, 0.24, ns);
+        [...word].forEach((ch, k) => letter(ch, a0 + k * 6 * c, 3.75 + 6 * c, c, 0.26));
+        sx = 0; sz = 3.75 + 3 * c; sr = wd * 0.5 + 3;
+      }
+      const q = P(sx, sz, 1);
+      signs.push({x: q[0], y: q[1], z: sz, col: n, r: sr, bx: b.x, by: b.y});
+    }
+  };
+  // The front rows along both sides of the road, then taller towers behind for the skyline
+  for (const side of [-1, 1]) {
+    for (let u = 0; u < L;) {
+      const w = 16 + rnd() * 30, d = 14 + rnd() * 18, h = 11 + Math.pow(rnd(), 1.7) * 72, b = place(u, side, W + 6.2 + d / 2, w, d, h, 399);
+      if (b) decorate(b, true);
+      u += (b ? w + 0.8 : 7);
+    }
+    for (let u = 8; u < L;) {
+      const w = 20 + rnd() * 24, d = 20 + rnd() * 22, b = place(u, side, W + 44 + d / 2 + rnd() * 40, w, d, 26 + Math.pow(rnd(), 1.3) * 110, 800);
+      if (b) decorate(b, false);
+      u += (b ? w + 12 : 9);
+    }
+  }
+  // The barriers, and the street lamps behind them with an arm reaching over the road
+  for (const side of [-1, 1]) for (let u = 0; u < L; u += 9) {
+    const p = roadside(u, side * (W + 4.4));
+    if (distToRoad(p.x, p.y) > W + 3.9) barrier.push({x: p.x, y: p.y, hx: p.dx, hy: p.dy, hazard: Math.floor(u / 9) % 8 === 0});
+  }
+  for (let u = 6, k = 0; u < L; u += 36, k++) {
+    const side = k % 2 ? 1 : -1, p = roadside(u, side * (W + 5.0));
+    if (distToRoad(p.x, p.y) < W + 4.4) continue;
+    lamps.push({x: p.x, y: p.y, hx: p.dx, hy: p.dy, side, lx: p.x - p.rx * side * 3.6, ly: p.y - p.ry * side * 3.6});
+  }
+  // The ground's light: lamp and neon pools on a 2 m grid
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const g of SEGS) { x0 = Math.min(x0, g.ax); x1 = Math.max(x1, g.ax); y0 = Math.min(y0, g.ay); y1 = Math.max(y1, g.ay); }
+  const G = {x0: x0 - 40, y0: y0 - 40, w: Math.ceil((x1 - x0 + 80) / 2), h: Math.ceil((y1 - y0 + 80) / 2)};
+  G.d = new Float32Array(G.w * G.h * 3);
+  const pool = (x, y, r, cr, cg, cb) => {
+    const i0 = Math.max(0, Math.floor((x - r - G.x0) / 2)), i1 = Math.min(G.w - 1, Math.ceil((x + r - G.x0) / 2)), j0 = Math.max(0, Math.floor((y - r - G.y0) / 2)), j1 = Math.min(G.h - 1, Math.ceil((y + r - G.y0) / 2));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const q = 1 - Math.hypot(G.x0 + i * 2 - x, G.y0 + j * 2 - y) / r;
+      if (q <= 0) continue;
+      const f = q * q, o = (j * G.w + i) * 3;
+      G.d[o] += cr * f; G.d[o + 1] += cg * f; G.d[o + 2] += cb * f;
+    }
+  };
+  for (const l of lamps) pool(l.lx, l.ly, 17, 1.05, 0.74, 0.42);
+  for (const s of signs) pool(s.x, s.y, 7 + s.r, s.col[0] / 255 * 0.7, s.col[1] / 255 * 0.7, s.col[2] / 255 * 0.7);
+  NIGHT = {buildings, lamps, signs, barrier, G};
+  return NIGHT;
+}
+// The light on the ground at a point, bilinear on the grid, into NL
+const NL = [0, 0, 0];
+function nightLight(x, y) {
+  const G = nightData().G, fx = (x - G.x0) / 2, fy = (y - G.y0) / 2, i = Math.floor(fx), j = Math.floor(fy);
+  if (i < 0 || j < 0 || i >= G.w - 1 || j >= G.h - 1) { NL[0] = NL[1] = NL[2] = 0; return NL; }
+  const a = fx - i, b = fy - j, o = (j * G.w + i) * 3, d = G.d, W = G.w * 3;
+  for (let c = 0; c < 3; c++) NL[c] = (d[o + c] * (1 - a) + d[o + 3 + c] * a) * (1 - b) + (d[o + W + c] * (1 - a) + d[o + W + 3 + c] * a) * b;
+  return NL;
+}
+const NIGHT_PAL = {1: [31, 32, 40], 2: [50, 50, 58], 3: [120, 118, 110], 0: [50, 50, 58]};
+// The ground's color at night: dim under the sky, bright under the lamps, and the road has a damp shine in the pools
+function nightGround(x, y, sf) {
+  const b = NIGHT_PAL[sf] || NIGHT_PAL[2], l = nightLight(x, y), s = sf === 1 ? 20 : 4;
+  return [Math.min(255, b[0] * (0.62 + l[0] * 1.5) + l[0] * s), Math.min(255, b[1] * (0.62 + l[1] * 1.5) + l[1] * s), Math.min(255, b[2] * (0.72 + l[2] * 1.5) + l[2] * s)];
+}
+// A part's color on a car at night, darkened (level 0-4: how much lamp light the car is standing in), a cool cast in the dark
+const NIGHT_TINTS = new Map();
+function nightTint(col, lvl) {
+  const key = col + lvl;
+  let v = NIGHT_TINTS.get(key);
+  if (!v) {
+    const c = glsCol(col), k = 0.34 + lvl * 0.13, warm = lvl * 0.012;
+    v = rgbS(c[0] * (k + warm), c[1] * k, c[2] * (k + 0.05 - warm));
+    NIGHT_TINTS.set(key, v);
+  }
+  return v;
+}
+function nightCarLevel(x, y) { const l = nightLight(x, y); return Math.min(4, Math.floor((l[0] + l[1] + l[2]) * 1.6)); }
+// Soft round lights, made once per color and added onto the picture
+const GLOW_SPRITES = new Map();
+function glowSprite(r, g, b) {
+  const key = r + ',' + g + ',' + b;
+  let c = GLOW_SPRITES.get(key);
+  if (!c) {
+    c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, `rgba(${Math.min(255, r + 120)},${Math.min(255, g + 120)},${Math.min(255, b + 120)},1)`); gr.addColorStop(0.18, `rgba(${r},${g},${b},0.75)`); gr.addColorStop(0.5, `rgba(${r},${g},${b},0.16)`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+    GLOW_SPRITES.set(key, c);
+  }
+  return c;
+}
+function drawGlow(x, y, z, rad, r, g, b, alpha = 1) {
+  const p = proj(x, y, z);
+  if (!p) return;
+  const R = Math.max(1.5, rad * F / p[2]);
+  ctx.globalAlpha = alpha; ctx.drawImage(glowSprite(r, g, b), p[0] - R, p[1] - R, R * 2, R * 2); ctx.globalAlpha = 1;
+}
+// Where a model's lamps are, from its parts list (cached per car): nose, tail, how far apart, how high
+const LAMP_SPOTS = new Map();
+function lampSpots(b) {
+  let s = LAMP_SPOTS.get(b);
+  if (s) return s;
+  const C = CARS[b], sh = C.shape || C.sideShape || C.cab3d, parts = sh && sh.parts ? sh.parts : [];
+  let fr = 2.1, re = -2.1, wide = 0.85, z = 0.72;
+  if (parts.length) {
+    fr = Math.max(...parts.map(q => q[2])); re = Math.min(...parts.map(q => q[1]));
+    const vs = parts.map(q => Math.max(Math.abs(q[3]), Math.abs(q[4]))).filter(Number.isFinite);
+    if (vs.length && Math.max(...vs) > 0.3) wide = Math.max(...vs);
+    const hl = parts.find(q => q[0] === 'hl' || q[0] === 'hlt');
+    if (hl) z = (hl[5] + hl[6]) / 2;
+  }
+  s = {fr, re, v: sh && sh.trike ? 0.01 : wide * 0.72, z};
+  LAMP_SPOTS.set(b, s);
+  return s;
+}
+// The lamps of the car being drawn (posed in S): headlights toward you, tail lights from behind, brightening under braking
+function drawCarLights(b) {
+  const s = lampSpots(b), c = Math.cos(S.h), sn = Math.sin(S.h), o = NIGHT_CAR || {}, dx = CAMX - S.x, dy = CAMY - S.y, d = Math.hypot(dx, dy) || 1, cs = (dx * c + dy * sn) / d;
+  const at = (u, v) => [S.x + c * u - sn * v, S.y + sn * u + c * v];
+  const prev = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'lighter';
+  for (const v of s.v < 0.1 ? [0] : [-s.v, s.v]) {
+    if (cs > -0.15) { const q = at(s.fr, v); drawGlow(q[0], q[1], s.z, 0.35 + 1.2 * Math.max(0, cs), 255, 236, 190, 0.45 + 0.55 * Math.max(0, cs)); }
+    if (cs < 0.15) { const q = at(s.re, v); drawGlow(q[0], q[1], s.z + 0.04, o.brake ? 1.05 : 0.5, 255, 44, 36, o.brake ? 1 : 0.8); }
+    if (o.blink && Math.sign(v) === o.blink && Math.floor(performance.now() / 330) % 2) { const q = at(cs > 0 ? s.fr : s.re, v * 1.08); drawGlow(q[0], q[1], s.z, 0.6, 255, 170, 30); }
+  }
+  ctx.globalCompositeOperation = prev;
+}
+// Light thrown on the road: reflections of lamps and neon on the damp road, every car's headlight beams, racers' underglow
+function drawNightGround() {
+  const D = nightData(), c = Math.cos(CAMYAW), s = Math.sin(CAMYAW), wetK = S.rain ? 1.5 : 1, far = LOWG() ? 70 : 130;
+  // The lanes, painted crisply near the camera: a double yellow line down the middle, white dashes between the lanes each way
+  const reach = LOWG() ? 70 : 150, u0 = Math.floor(nearestArc(CAMX, CAMY) / 3) * 3, L = ROUTE_LEN, pt = (u, o) => { const q = roadside(((u % L) + L) % L, o); return proj(q.x, q.y, 0.01); };
+  for (let u = u0 - reach; u < u0 + reach; u += 3) {
+    const q = roadside(((u % L) + L) % L, 0);
+    if ((q.x - CAMX) * c + (q.y - CAMY) * s < -6) continue;
+    for (const o of [-0.2, 0.2]) polyFill([pt(u, o - 0.06), pt(u, o + 0.06), pt(u + 3.1, o + 0.06), pt(u + 3.1, o - 0.06)], 'rgb(150,118,40)');
+    if ((((u % 12) + 12) % 12) === 0) for (const o of [-3.75, 3.75]) polyFill([pt(u, o - 0.07), pt(u, o + 0.07), pt(u + 4, o + 0.07), pt(u + 4, o - 0.07)], 'rgb(112,112,118)');
+  }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const streak = (x, y, h, rad, r, g, b, alpha) => {
+    const dx = x - CAMX, dy = y - CAMY, f = dx * c + dy * s;
+    if (f < 4 || f > far) return;
+    const p = proj(x, y, 0);
+    if (!p) return;
+    const k = F / p[2], w = rad * k, len = Math.min(VH - p[1] + 8, h * 1.5 * k);
+    if (p[0] < -w || p[0] > VW + w || len < 2) return;
+    ctx.globalAlpha = Math.min(1, alpha * wetK * Math.min(1, (far - f) / 30));
+    ctx.drawImage(glowSprite(r, g, b), p[0] - w, p[1] - len * 0.1, w * 2, len);
+  };
+  for (const l of D.lamps) streak(l.lx, l.ly, 9, 1.4, 255, 196, 120, 0.4);
+  for (const q of D.signs) streak(q.x, q.y, 6, 2.6, q.col[0], q.col[1], q.col[2], 0.34);
+  ctx.globalAlpha = 1;
+  const beam = (x, y, h, front, wide, power) => {
+    const cc = Math.cos(h), sn = Math.sin(h), at = (u, v) => proj(x + cc * u - sn * v, y + sn * u + cc * v, 0.02);
+    for (const [u0, u1, w0, w1, al] of [[front, front + 10, wide, wide + 1.6, 0.07], [front, front + 18, wide, wide + 2.8, 0.06], [front + 1, front + 28, wide, wide + 4, 0.05], [front + 3, front + 40, wide + 0.3, wide + 6, 0.04]]) {
+      const q = [at(u0, -w0), at(u0, w0), at(u1, w1), at(u1, -w1)];
+      if (q.some(p => !p)) continue;
+      polyFill(q, `rgba(255,232,186,${al * power})`);
+    }
+  };
+  if (!SHOWCASE) {
+    beam(S.x, S.y, S.h, lampSpots(CFG.body).fr, 0.8, 1.15);
+    for (const t of S.ntr || []) if (!t.wreck && t.d < 90 && t.x !== undefined) beam(t.x, t.y, t.h, 2, 0.8, 0.8);
+    if (EVT !== null && RX) for (const ai of RX.ais) {
+      const p = aiPose(ai), d = Math.hypot(p.x - CAMX, p.y - CAMY);
+      if (d > 140) continue;
+      if (d < 90) beam(p.x, p.y, p.h, 2, 0.8, 0.9);
+      // The racers' underglow: a pool of color under the car
+      const cc = Math.cos(p.h), sn = Math.sin(p.h), ring = k => Array.from({length: 12}, (_, i) => { const a = i / 12 * Math.PI * 2, u = Math.cos(a) * 3.1 * k, v = Math.sin(a) * 1.75 * k; return proj(p.x + cc * u - sn * v, p.y + sn * u + cc * v, 0.03); });
+      const [r, g, b] = ai.glow || [47, 230, 255];
+      polyFill(ring(1.25), `rgba(${r},${g},${b},0.16)`); polyFill(ring(0.9), `rgba(${r},${g},${b},0.34)`);
+    }
+  }
+  ctx.restore();
+}
+// The Classic renderer's night scenery, and the traffic on either renderer
+function addNightItems(items, dist, glS) {
+  const low = LOWG(), cf = Math.cos(CAMYAW), sf = Math.sin(CAMYAW), front = (x, y, m) => (x - CAMX) * cf + (y - CAMY) * sf > -m;
+  for (const t of S.ntr || []) {
+    if (t.x === undefined) continue;
+    t.d = dist(t.x, t.y);
+    if (t.d > (low ? 130 : 240) || !front(t.x, t.y, 8)) continue;
+    items.push({d: t.d, fn: () => { NIGHT_CAR = {brake: t.v < t.vPrev - 0.01 || t.v < 2, blink: t.blinkT > 0 ? t.blink : 0}; drawOther(t.body, t.x, t.y, t.h, t.paint); NIGHT_CAR = null; }});
+  }
+  if (glS) return;
+  const D = nightData();
+  for (const b of D.buildings) {
+    if (!front(b.x, b.y, b.r + 4)) continue;
+    const d = dist(b.x, b.y);
+    if (d > 260) continue;
+    items.push({d, fn: () => {
+      queued(() => drawBox({x: b.x, y: b.y, hx: b.hx, hy: b.hy}, -b.w / 2, b.w / 2, -b.d / 2, b.d / 2, 0, b.h, b.side, b.top, b.end, null));
+      if (d > 150) return;
+      for (const q of b.decor) if ((CAMX - q.pts[0][0]) * q.nx + (CAMY - q.pts[0][1]) * q.ny > 0 && (!q.fine || d < 80)) polyFill(q.pts.map(p => proj(p[0], p[1], p[2])), q.col);
+    }});
+  }
+  for (const q of D.barrier) {
+    const d = dist(q.x, q.y);
+    if (d < 70 && front(q.x, q.y, 6)) items.push({d, fn: () => nightBarrier(q)});
+  }
+  for (const l of D.lamps) {
+    const d = dist(l.x, l.y);
+    if (d < 190 && front(l.x, l.y, 6)) items.push({d, fn: () => { nightLamp(l, drawBox); const p = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'lighter'; drawGlow(l.lx, l.ly, 9.0, 2.4, 255, 206, 140); ctx.globalCompositeOperation = p; }});
+  }
+}
+function nightBarrier(q, box = drawBox) {
+  const cp = {x: q.x, y: q.y, hx: q.hx, hy: q.hy};
+  box(cp, -4.6, 4.6, -0.28, 0.28, 0, 0.85, q.hazard ? 'rgb(120,104,44)' : 'rgb(56,56,62)', q.hazard ? 'rgb(150,130,56)' : 'rgb(72,72,78)', 'rgb(42,42,48)', null);
+}
+function nightLamp(l, box = drawBox) {
+  const cp = {x: l.x, y: l.y, hx: l.hx, hy: l.hy}, s = l.side;   // (the arm reaches back over the road, toward -side)
+  box(cp, -0.1, 0.1, -0.1, 0.1, 0, 9.3, 'rgb(40,42,50)', 'rgb(40,42,50)', 'rgb(30,32,40)', null);
+  box(cp, -0.06, 0.06, Math.min(0, -s * 3.9), Math.max(0, -s * 3.9), 9.2, 9.32, 'rgb(40,42,50)', 'rgb(40,42,50)', 'rgb(30,32,40)', null);
+  const m = -s * 3.6;
+  box(cp, -0.3, 0.3, m - 0.2, m + 0.2, 9.02, 9.2, 'rgb(255,226,170)', 'rgb(48,48,54)', 'rgb(255,226,170)', null);
+}
+/* The traffic: dumb cars cruising both ways round the loop, keeping right. They do not look at anything but the bumper
+   right in front of them: they change lanes when they feel like it (with a late blinker, none, or the wrong one), crawl
+   for no reason, stop dead, speed up, wobble in their lane, and now and then wander over the center line. You and the
+   racers have to get round them. Hit one and it spins off, and you lose the speed you shared with it. */
+const NIGHT_TRAFFIC_CARS = ['metro90', 'caprice85', 'explorer91', 'explorer98', 'odyssey10', 'crv97', 'crv03', 'rabbit83', 'forester11', 'beetle99', 'grandam93', 'grandam87', 'pickup', 'ram', 'justy90'];
+const NIGHT_LANES = [-5.6, -1.9, 1.9, 5.6];
+function makeNightTraffic() {
+  const n = LOWG() ? 40 : 64, L = ROUTE_LEN, bodies = NIGHT_TRAFFIC_CARS.filter(b => CARS[b]), cars = [];
+  const paints = PAINTS.filter(p => p[1]).map(p => p[1]);
+  for (let i = 0; i < n; i++) {
+    const dir = i % 2 ? 1 : -1, lane = dir * (Math.random() < 0.55 ? 1.9 : 5.6), body = bodies[Math.floor(Math.random() * bodies.length)];
+    // (spread round the loop, but clear of the start line)
+    const u = 90 + (L - 220) * (i + Math.random() * 0.8) / n;
+    cars.push({u, dir, lat: lane, laneT: lane, home: lane, v: 9, vPrev: 9, cruise: 9 + Math.random() * 8, vT: 12, body, paint: Math.random() < 0.45 ? CARS[body].paint || paints[0] : paints[Math.floor(Math.random() * paints.length)], ev: 1 + Math.random() * 10, modeT: 0, blink: 0, blinkT: 0, latV: 0, wob: Math.random() * 6, hit: 0, wreck: null, d: 999});
+  }
+  return cars;
+}
+const wrapGap = (a, L) => { const g = ((a % L) + L) % L; return g > L / 2 ? g - L : g; };
+function trafficWhim(t) {
+  const r = Math.random(), other = t.dir * (Math.abs(t.laneT) < 3 ? 5.6 : 1.9);
+  if (r < 0.42) {   // a lane change, with hardly any warning
+    t.laneT = Math.random() < 0.14 ? -t.dir * 1.9 : other;   // (sometimes straight over the center line)
+    t.home = Math.sign(t.laneT) === t.dir ? t.laneT : t.home;
+    const wanted = Math.sign((t.laneT - t.lat) * t.dir) || 1, q = Math.random();
+    t.blink = q < 0.45 ? wanted : q < 0.7 ? -wanted : 0; t.blinkT = 1.6;
+    if (Math.sign(t.laneT) !== t.dir) t.modeT = 2.5 + Math.random() * 2;
+  } else if (r < 0.6) { t.vT = 3 + Math.random() * 4; t.modeT = 3 + Math.random() * 3; }   // crawling, for no reason
+  else if (r < 0.72) { t.vT = 0; t.modeT = 1.2 + Math.random() * 2; }                      // stops dead
+  else if (r < 0.86) { t.vT = t.cruise + 7; t.modeT = 3 + Math.random() * 3; }              // suddenly in a hurry
+  t.ev = 3 + Math.random() * 10;
+}
+function trafficWreck(t, vx, vy, spin) {
+  t.wreck = {vx, vy, spin, t: 5.5}; t.hit = 2; t.blinkT = 0;
+}
+function trafficPose(t) {
+  const p = roadside(((t.u % ROUTE_LEN) + ROUTE_LEN) % ROUTE_LEN, t.lat), h0 = Math.atan2(p.dy, p.dx);
+  t.x = p.x; t.y = p.y; t.h = (t.dir < 0 ? h0 + Math.PI : h0) + t.dir * Math.atan2(t.latV, Math.max(t.v, 3));
+  t.hx = p.dx; t.hy = p.dy;
+}
+function trafficStep(dt) {
+  if (!S.ntr) S.ntr = makeNightTraffic();
+  const L = ROUTE_LEN, held = EVT !== null && RX && (!RX.armed || RX.t < 0);   // the street is clear and still until the green light
+  const pc = Math.cos(S.h), ps = Math.sin(S.h), pvx = S.v * pc - S.vy * ps, pvy = S.v * ps + S.vy * pc;
+  for (const t of S.ntr) {
+    t.vPrev = t.v;
+    if (t.wreck) {   // spinning off, then gone; another driver takes its place far from you
+      const w = t.wreck, k = Math.max(0, 1 - 1.6 * dt);
+      t.x += w.vx * dt; t.y += w.vy * dt; t.h += w.spin * dt; w.vx *= k; w.vy *= k; w.spin *= k; w.t -= dt;
+      if (w.t <= 0) {
+        t.wreck = null; t.v = t.cruise; t.vT = t.cruise; t.modeT = 0; t.laneT = t.lat = t.home; t.latV = 0;
+        t.u = (nearestArc(S.x, S.y) + L * (0.3 + Math.random() * 0.4)) % L; trafficPose(t);
+      }
+      continue;
+    }
+    if (held) { if (t.x === undefined) trafficPose(t); continue; }
+    t.hit = Math.max(0, t.hit - dt); t.blinkT = Math.max(0, t.blinkT - dt);
+    t.ev -= dt; if (t.ev <= 0) trafficWhim(t);
+    if (t.modeT > 0) { t.modeT -= dt; if (t.modeT <= 0) { t.vT = t.cruise; if (Math.sign(t.laneT) !== t.dir) t.laneT = t.home; } } else t.vT = t.cruise;
+    // The one thing it does watch: the bumper right in front of it
+    let want = t.vT;
+    for (const o of S.ntr) {
+      if (o === t || o.dir !== t.dir || o.wreck || Math.abs(o.lat - t.lat) > 2.2) continue;
+      const g = wrapGap((o.u - t.u) * t.dir, L);
+      if (g > 0 && g < 11) want = Math.min(want, o.v * (g < 7 ? 0.5 : 1));
+    }
+    t.v = approach(t.v, want, (want < t.v ? 7 : 2.6) * dt);
+    t.wob += dt;
+    const target = t.laneT + Math.sin(t.wob * 0.7) * 0.35, lv = clamp((target - t.lat) * 1.3, -2.8, 2.8);
+    t.latV = approach(t.latV, t.v > 0.5 ? lv : 0, 7 * dt);
+    t.lat += t.latV * dt;
+    t.u = (t.u + t.dir * t.v * dt + L) % L;
+    trafficPose(t);
+    // You: a box test in the traffic car's frame. (A hop clears it.)
+    const dx = S.x - t.x, dy = S.y - t.y;
+    if (t.hit <= 0 && S.hz < 0.6 && dx * dx + dy * dy < 36) {
+      const c = Math.cos(t.h), sn = Math.sin(t.h), al = dx * c + dy * sn, si = -dx * sn + dy * c;
+      if (Math.abs(al) < 4 && Math.abs(si) < 1.9) {
+        const tvx = c * t.v, tvy = sn * t.v, rel = Math.hypot(pvx - tvx, pvy - tvy), mp = CFG.mass, mt = 1450, share = mt / (mp + mt);
+        // Momentum: your speed goes toward its speed by its share of the weight; a big truck hardly slows
+        const along = tvx * pc + tvy * ps;
+        S.v += (along - S.v) * Math.min(1, share * 1.15); S.v = Math.max(S.v, -3); S.ww = S.v;
+        S.r += clamp((si > 0 ? 1 : -1) * rel * 0.035, -1.3, 1.3);
+        S.vy += (si > 0 ? 1 : -1) * Math.min(5, rel * 0.1);
+        S.x += (si > 0 ? -sn : sn) * 0.25; S.y += (si > 0 ? c : -c) * 0.25;
+        damageBody(1.5 + rel * 0.28);
+        sfx(rel > 14 ? 'boom' : 'clunk');
+        log(rel > 14 ? 'Smashed into traffic!' : 'Clipped traffic.', 'bad');
+        const push = (1 - share) * 1.2;
+        trafficWreck(t, tvx + (pvx - tvx) * push, tvy + (pvy - tvy) * push, (si > 0 ? -1 : 1) * (1 + rel * 0.12));
+        continue;
+      }
+    }
+    // The racers
+    if (EVT !== null && RX && RX.armed) for (const ai of RX.ais) {
+      if (Math.abs(wrapGap(ai.u - t.u, L)) < 4.2 && Math.abs(ai.lat - t.lat) < 1.95) {
+        const p = aiPose(ai), rel = Math.abs(ai.v - t.dir * t.v);
+        trafficWreck(t, p.dx * (t.dir * t.v + rel * 0.5), p.dy * (t.dir * t.v + rel * 0.5), (Math.random() < 0.5 ? -1 : 1) * (1 + rel * 0.1));
+        ai.v = Math.max(2, ai.v - rel * 0.55); ai.wob = 1.3;
+        if (Math.hypot(t.x - S.x, t.y - S.y) < 120) sfx('clunk');
+        break;
+      }
+    }
+  }
+}
+// A racer's driving: every tenth of a second it looks up the road (farther the faster it goes) at the traffic, the other
+// racers and you, works out for each lane how many seconds it has before it hits something there, keeps its lane while
+// that is plenty and otherwise swerves for the clearest. Traffic's sudden lane changes can still catch one out. With
+// nowhere to go it stands on the brakes. Sets ai.panic for aiStep.
+function nightAi(ai, v, dt) {
+  ai.dT = (ai.dT || 0) - dt;
+  const L = RX.L, lim = CFG.RW - 1.2;
+  if (ai.dT <= 0) {
+    ai.dT = 0.1;
+    const look = 14 + v * (1.1 + (ai.skill || 0.8)), obs = [];
+    for (const t of S.ntr || []) {
+      const g = wrapGap(t.u - ai.u, L);
+      if (g > -3 && g < look) obs.push(g, t.lat + (t.wreck ? 0 : t.latV * 0.35), t.wreck ? 0 : t.dir * t.v);
+    }
+    for (const o of RX.ais) if (o !== ai) { const g = wrapGap(o.u - ai.u, L); if (g > 0 && g < 26) obs.push(g, o.lat, o.v); }
+    if (RX.done === null) { const g = wrapGap(RX.prog - ai.u, L); if (g > -1 && g < 26) obs.push(g, RX.lat, S.v); }
+    const ttcFor = cand => {
+      let best = 9;
+      for (let i = 0; i < obs.length; i += 3) {
+        if (Math.abs(obs[i + 1] - cand) > 2.35) continue;
+        const close = v - obs[i + 2], q = obs[i] < 5.5 ? (close > -1 ? 0.2 : 9) : close > 0.5 ? (obs[i] - 4.5) / close : 9;
+        if (q < best) best = q;
+      }
+      return best;
+    };
+    const mine = ttcFor(ai.lat);
+    if (mine > 3 && Math.abs(ai.latT - ai.lat) < 0.4) { ai.latT = ai.lat; ai.panic = false; }
+    else {
+      let top = -1e9, pick = ai.lat, ttc = mine;
+      for (const c of NIGHT_LANES.concat([ai.lat])) {
+        const q = ttcFor(c), score = Math.min(q, 5) - Math.abs(c - ai.lat) * 0.07 - (c < 0 ? 0.25 : 0);   // (a little happier on its own side)
+        if (score > top) { top = score; pick = c; ttc = q; }
+      }
+      ai.latT = pick; ai.panic = ttc < 0.9;
+    }
+  }
+  const maxV = 3 + v * 0.2, want = clamp((ai.latT - ai.lat) * 2.6, -maxV, maxV);
+  ai.latV = approach(ai.latV || 0, v > 1 ? want : 0, 15 * dt);
+  ai.lat = clamp(ai.lat + ai.latV * dt, -lim, lim);
+  ai.wob = Math.max(0, (ai.wob || 0) - dt);
+  // Nose into the swerve; a knock sets it wobbling for a moment
+  ai.yaw = Math.atan2(ai.latV, Math.max(v, 5)) + (ai.wob > 0 ? Math.sin(ai.wob * 13) * 0.25 * ai.wob : 0);
+}
+// The racers stay in the fight: a racer far ahead of you eases off a little, one far behind finds a little more
+function nightBand(ai) {
+  const gap = ai.u - RX.prog;
+  return gap > 40 ? Math.max(0.72, 1 - (gap - 40) / 420) : gap < -40 ? Math.min(1.3, 1 + (-gap - 40) / 320) : 1;
+}
+// The barriers along the road: like the speedway's walls, a car is put back, loses the speed going into them and scrapes
+function nightWalls(dt) {
+  if (S.hz > 1.2) return;
+  let best = Infinity, px = 0, py = 0;
+  for (const sg of SEGS) {
+    const t = clamp((S.x - sg.ax) * sg.dx + (S.y - sg.ay) * sg.dy, 0, sg.len), qx = sg.ax + sg.dx * t - S.x, qy = sg.ay + sg.dy * t - S.y, d = qx * qx + qy * qy;
+    if (d < best) { best = d; px = qx; py = qy; }
+  }
+  const d = Math.sqrt(best), over = d - (CFG.RW + 3.2);
+  if (over <= 0) return;
+  const nx = -px / d, ny = -py / d;   // the way into the barrier
+  S.x -= nx * over; S.y -= ny * over;
+  const c = Math.cos(S.h), sn = Math.sin(S.h);
+  let vx = S.v * c - S.vy * sn, vy = S.v * sn + S.vy * c;
+  const vn = vx * nx + vy * ny;
+  if (vn > 0) {
+    vx -= 1.25 * vn * nx; vy -= 1.25 * vn * ny;
+    if (vn > 2) { sfx('clunk'); damageBody(vn * 0.3); S.r *= 0.6; if (vn > 6) log('Into the barrier!', 'bad'); }
+  }
+  const k = 1 - Math.min(0.5, 0.9 * dt);
+  vx *= k; vy *= k;
+  S.v = vx * c + vy * sn; S.vy = -vx * sn + vy * c; S.ww = S.v;
+}
+// The same scenery on the graphics chip
+function glsNight(B, low) {
+  const D = nightData();
+  for (const b of D.buildings) {
+    B.obj(b.x, b.y, b.reach);
+    B.box({x: b.x, y: b.y, hx: b.hx, hy: b.hy}, -b.w / 2, b.w / 2, -b.d / 2, b.d / 2, 0, b.h, b.side, b.top, b.end);
+    for (const q of b.decor) if (!low || !q.fine) B.poly(q.pts, q.col);
+  }
+  for (const q of D.barrier) { B.obj(q.x, q.y, low ? 120 : 240); nightBarrier(q, B.box); }
+  for (const l of D.lamps) { B.obj(l.x, l.y, 399); nightLamp(l, B.box); }
+}
+// Soft halos round the lamps and neon, turned to the camera each frame: a fan fading from the color to nothing
+function glsNightGlows() {
+  const D = nightData(), c = Math.cos(CAMYAW), s = Math.sin(CAMYAW), rx = -s, ry = c;
+  const out = GLS.glowD || (GLS.glowD = new ArrayBuffer(1024 * 1024)), f = new Float32Array(out), u = new Uint32Array(out), maxV = f.length / 7 - 60;
+  let n = 0;
+  const put = (x, y, z, col, ax, ay) => { const o = n * 7; f[o] = x; f[o + 1] = y; f[o + 2] = z; u[o + 3] = col; f[o + 4] = ax; f[o + 5] = ay; f[o + 6] = 399; n++; };
+  const halo = (x, y, z, R, r, g, b, alpha, ax, ay) => {
+    const mid = (alpha << 24 | b << 16 | g << 8 | r) >>> 0, rim = (b << 16 | g << 8 | r) >>> 0;
+    for (let i = 0; i < 10; i++) {
+      const a0 = i / 10 * Math.PI * 2, a1 = (i + 1) / 10 * Math.PI * 2;
+      put(x, y, z, mid, ax, ay);
+      put(x + rx * Math.cos(a0) * R, y + ry * Math.cos(a0) * R, z + Math.sin(a0) * R, rim, ax, ay);
+      put(x + rx * Math.cos(a1) * R, y + ry * Math.cos(a1) * R, z + Math.sin(a1) * R, rim, ax, ay);
+    }
+  };
+  for (const l of D.lamps) {
+    const dx = l.x - CAMX, dy = l.y - CAMY, d = Math.hypot(dx, dy);
+    if (d > 399 || dx * c + dy * s < -6 || n > maxV) continue;
+    halo(l.lx, l.ly, 9.0, 1.9 + d * 0.012, 255, 206, 140, 190, l.x, l.y);
+  }
+  for (const q of D.signs) {
+    const dx = q.x - CAMX, dy = q.y - CAMY, d = Math.hypot(dx, dy);
+    if (d > 300 || dx * c + dy * s < -12 || n > maxV) continue;
+    halo(q.x, q.y, q.z, q.r, q.col[0], q.col[1], q.col[2], 70, q.bx, q.by);
+  }
+  GLS.glowN = n;
+  const gl = GLT.gl;
+  if (!GLS.glow) GLS.glow = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, GLS.glow); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(out, 0, n * 7), gl.DYNAMIC_DRAW);
+}
+
 /* ---------- the WebGL scenery ---------- */
 // Stage 2: the trees, houses, offices, the speedway's stands, walls and crowd, and the forest's fans, on the graphics
 // chip. Everything that does not move is baked once per map (and again when the state's trees change, or snow, or the
@@ -6247,6 +6807,7 @@ function glsBuild(snow, low) {
     cs.forEach(([x, y], k) => { const [x2, y2] = cs[(k + 1) % 4]; B.poly([[x, y, elev(x, y)], [x2, y2, elev(x2, y2)], [x2, y2, elev(x2, y2) + b.h], [x, y, elev(x, y) + b.h]], k % 2 ? b.c1 : b.c2); });
   }
   if (isOvalMap()) glsStadium(B, low);
+  if (isNightMap()) glsNight(B, low);
   // The towns reuse their own box drawing: drawBox and drawBoxNow hand their boxes to the builder while GLS_REC is set
   GLS_REC = B.box;
   if (MAP_KIND === 'suburb') {
@@ -6320,8 +6881,9 @@ const glsOn = () => {
 function glsRender(items, dt) {
   const gl = GLT.gl, L = GLS.loc, T = GLT, low = LOWG(), snow = snowing();
   const key = MAP_KIND + '|' + snow + '|' + low;
-  if (key !== GLS.key || GLS.city !== S.city) { glsBuild(snow, low); GLS.key = key; GLS.city = S.city; }
+  if (key !== GLS.key || (GLS.city !== S.city && !isNightMap())) { glsBuild(snow, low); GLS.key = key; GLS.city = S.city; }
   if (isForestMap() && !SHOWCASE) glsFans(dt); else { GLS.dynN = 0; GLS.fanDs = null; }
+  if (isNightMap()) glsNightGlows(); else GLS.glowN = 0;
   // The chunks in reach, and how far every object in them is (to know where a slice is needed)
   const c = Math.cos(CAMYAW), s = Math.sin(CAMYAW), vis = [];
   let nd = 0, ds = GLS.ds;
@@ -6360,6 +6922,7 @@ function glsRender(items, dt) {
       gl.bindBuffer(gl.ARRAY_BUFFER, p.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, p.ib); attribs();
       gl.drawElements(gl.TRIANGLES, p.nT, gl.UNSIGNED_SHORT, p.nO * 2);
     }
+    if (GLS.glowN) { gl.bindBuffer(gl.ARRAY_BUFFER, GLS.glow); attribs(); gl.drawArrays(gl.TRIANGLES, 0, GLS.glowN); }
     gl.depthMask(true);
     ctx.drawImage(T.cv, -P, -P, Wc, Hc);
   };
@@ -6562,6 +7125,7 @@ function draw(dt) {
   if (!SHOWCASE && RACE !== null) drawRaceMarks();
   if (!SHOWCASE && EVT !== null) drawEventMarks();
   if (MAP_KIND === 'suburb') drawSuburbMarks();
+  if (isNightMap()) drawNightGround();
   // Standing objects, far to near
   const items = [];
   const dist = (x, y) => Math.hypot(x - CAMX, y - CAMY);
@@ -6582,6 +7146,7 @@ function draw(dt) {
   if (!SHOWCASE) addExhaustItems(items, dist);
   if (MAP_KIND === 'suburb' && !glS) addSuburbItems(items, dist);
   if (MAP_KIND === 'city' && !glS) addCityItems(items, dist);
+  if (isNightMap()) addNightItems(items, dist, glS);
   const treeFar = LOWG() ? 150 : 260, cfx = Math.cos(CAMYAW), cfy = Math.sin(CAMYAW);
   if (!glS) for (const b of S.city) {
     if ((b.cx - CAMX) * cfx + (b.cy - CAMY) * cfy < -8) continue;   // behind the camera: never on screen
@@ -7099,7 +7664,7 @@ function cabScreen(H0, c) { return [VW / 2 + c[0] * F / c[2], H0 - c[1] * F / c[
 function cabPoly(E, H0, pts, col) {
   const c = clipNear(pts.map(p => cabCam(E, ...p)));
   if (c.length < 3) return;
-  seamFill(c.map(q => cabScreen(H0, q)), col);
+  seamFill(c.map(q => cabScreen(H0, q)), isNightMap() && !SHOWCASE ? nightTint(col, 0) : col);
 }
 // A box in the car's frame: only the faces turned toward the eye are drawn (at most three, so they never overlap).
 // cols: top, bottom, back (the face toward the rear, u0), front (u1), side.
@@ -7698,6 +8263,7 @@ function mapIcon(kind) {
   else if (kind === 'dirt') add(DIRT_ROUTE, true);
   else if (kind === 'rally') add(RALLY_ROUTE, true);
   else if (kind === 'forest') add(FOREST_ROUTE, true);
+  else if (kind === 'night') add(NIGHT_ROUTE, true);
   else if (kind === 'oval') add(OVAL_ROUTE, true);
   else if (kind === 'airfield') add(AIRFIELD_ROUTE, true);
   else if (kind === 'pass') add(PASS_ROUTE, true);
@@ -7720,7 +8286,7 @@ function mapIcon(kind) {
 document.querySelectorAll('#mapPick [data-map]').forEach(b => b.insertAdjacentHTML('afterbegin', mapIcon(b.dataset.map)));
 if (!SCORING) document.querySelectorAll('#stats .score').forEach(r => { r.style.display = 'none'; });
 function showIntro() {
-  const mapName = TT_MAP === 'lot' ? 'the training lot' : TT_MAP === 'suburb' ? 'Maple Grove' : TT_MAP === 'city' ? 'downtown' : TT_MAP === 'short' ? 'the club circuit' : TT_MAP === 'plot' ? 'the parking lot' : TT_MAP === 'dirt' ? 'the dirt course' : TT_MAP === 'rally' ? 'the rally stage' : TT_MAP === 'forest' ? 'the forest stage' : TT_MAP === 'oval' ? 'the speedway' : TT_MAP === 'airfield' ? 'the airfield' : TT_MAP === 'pass' ? 'the mountain pass' : 'the circuit';
+  const mapName = TT_MAP === 'night' ? 'Midnight City, with traffic' : TT_MAP === 'lot' ? 'the training lot' : TT_MAP === 'suburb' ? 'Maple Grove' : TT_MAP === 'city' ? 'downtown' : TT_MAP === 'short' ? 'the club circuit' : TT_MAP === 'plot' ? 'the parking lot' : TT_MAP === 'dirt' ? 'the dirt course' : TT_MAP === 'rally' ? 'the rally stage' : TT_MAP === 'forest' ? 'the forest stage' : TT_MAP === 'oval' ? 'the speedway' : TT_MAP === 'airfield' ? 'the airfield' : TT_MAP === 'pass' ? 'the mountain pass' : 'the circuit';
   $('overlay').querySelector('.lbl').textContent = 'Test Track';
   showOverlay(CFG.name + ' on ' + mapName,
     `<p>Free drive: no clock, no laps and no penalties. Take it wherever you like.${S.rain ? (isPassMap() ? ' <b>It is snowing.</b>' : ' <b>It is raining.</b>') : ''}</p>${CFG.modNames.length ? '<p>Mods fitted: ' + CFG.modNames.join(', ') + '.</p>' : ''}
@@ -8286,6 +8852,7 @@ function frame(now) {
     for (let i = 0; i < n; i++) physics(dt / n);
     if (LESSON !== null && S.started && !S.finished) lessonTick();
     if (RACE !== null && !S.finished) raceTick(dt);
+    if (isNightMap() && !S.finished && $('overlay').hidden) trafficStep(dt);
     if (EVT !== null && !S.finished) eventTick(dt);
     if (CAREER_CAR) careerTick(dt);
   }
@@ -9699,10 +10266,12 @@ function drawRaceMap(free) {
 // on the same map, against a see-through copy of that run, with the gap shown live. Timed runs need a loop map.
 let TT_LAPS = 1, TT_MODE = 'free', TT_RAIN = false, GHOST = null, GHOST_RACE = false, TT_USED = null, LAST_RUN = null;
 const GHOST_DT = 0.05;
-const LOOP_MAPS = ['circuit', 'short', 'plot', 'dirt', 'rally', 'forest', 'oval', 'airfield', 'pass'];
-const MAP_NAMES = {circuit: 'Circuit', short: 'Club circuit', plot: 'Parking lot', dirt: 'Dirt course', rally: 'Rally stage', forest: 'Forest stage', oval: 'Speedway', airfield: 'Airfield', pass: 'Mountain pass'};
-const ttRunOn = () => TT_MODE === 'timed' && LOOP_MAPS.includes(TT_MAP);
+const LOOP_MAPS = ['circuit', 'short', 'plot', 'dirt', 'rally', 'forest', 'oval', 'airfield', 'pass', 'night'];
+const MAP_NAMES = {circuit: 'Circuit', short: 'Club circuit', plot: 'Parking lot', dirt: 'Dirt course', rally: 'Rally stage', forest: 'Forest stage', oval: 'Speedway', airfield: 'Airfield', pass: 'Mountain pass', night: 'Midnight City'};
+const ttRunOn = () => TT_MODE === 'street' || (TT_MODE === 'timed' && LOOP_MAPS.includes(TT_MAP));
 function ttRunEvent() {
+  if (TT_MODE === 'street' && !GHOST_RACE) return {id: 'ttstreet', ttStreet: true, map: 'night', laps: TT_LAPS, prize: 0, rain: TT_RAIN ? 1 : 0, name: 'Street race',
+    series: {name: 'Test Track', skill: 0.82, pool: (r, me) => r.tier === me.tier && !CARS[r.body].trikeTips}};
   const laps = GHOST_RACE && GHOST ? GHOST.laps : TT_LAPS, map = GHOST_RACE && GHOST ? GHOST.map : TT_MAP;
   return {id: 'ttrun', ghostRun: true, map, laps, prize: 0, rain: GHOST_RACE && GHOST ? GHOST.rain || 0 : TT_RAIN ? 1 : 0, name: GHOST_RACE ? 'Ghost race' : `Timed run: ${laps} ${laps === 1 ? 'lap' : 'laps'}`,
     series: {name: 'Test Track', solo: true}};
@@ -9809,19 +10378,21 @@ function renderGhostInfo(err) {
 }
 $('runPick').addEventListener('click', e => {
   const b = e.target.closest('[data-laps]');
-  if (b) { TT_LAPS = Number(b.dataset.laps); document.querySelectorAll('#runPick [data-laps]').forEach(x => x.classList.toggle('on', x === b)); }
+  if (b) { TT_LAPS = Number(b.dataset.laps); document.querySelectorAll('#runPick [data-laps]').forEach(x => x.classList.toggle('on', Number(x.dataset.laps) === TT_LAPS)); document.querySelectorAll('#streetPick [data-laps]').forEach(x => x.classList.toggle('on', Number(x.dataset.laps) === TT_LAPS)); }
 });
+$('streetPick').addEventListener('click', e => { const b = e.target.closest('[data-laps]'); if (b) { TT_LAPS = Number(b.dataset.laps); document.querySelectorAll('#runPick [data-laps], #streetPick [data-laps]').forEach(x => x.classList.toggle('on', Number(x.dataset.laps) === TT_LAPS)); } });
 // The garage's steps: the mode shows only its own options (a ghost race hides the car list, since the ghost picks the
 // car), a timed run grays out the tracks that are not loops, and the hints say what the choices mean
 function updateTTSetup() {
   document.querySelectorAll('#modePick [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === TT_MODE));
   document.querySelectorAll('.tt-mode').forEach(d => { d.hidden = d.dataset.for !== TT_MODE; });
   document.querySelectorAll('#wxPick [data-wx]').forEach(b => b.classList.toggle('on', (b.dataset.wx === 'rain') === TT_RAIN));
-  const timed = TT_MODE === 'timed', ghost = TT_MODE === 'ghost';
+  const timed = TT_MODE === 'timed', ghost = TT_MODE === 'ghost', street = TT_MODE === 'street';
+  if (street && TT_MAP !== 'night') { TT_MAP = 'night'; document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP)); }
   if (timed && !LOOP_MAPS.includes(TT_MAP)) { TT_MAP = 'circuit'; document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP)); }
-  document.querySelectorAll('#mapPick [data-map]').forEach(b => { const off = (timed && !LOOP_MAPS.includes(b.dataset.map)) || ghost; b.classList.toggle('off', off); b.title = off ? (ghost ? 'The ghost picks the track' : 'Timed runs need a loop track') : ''; });
+  document.querySelectorAll('#mapPick [data-map]').forEach(b => { const off = (timed && !LOOP_MAPS.includes(b.dataset.map)) || ghost || (street && b.dataset.map !== 'night'); b.classList.toggle('off', off); b.title = off ? (ghost ? 'The ghost picks the track' : street ? 'Street races run on Midnight City' : 'Timed runs need a loop track') : ''; });
   document.querySelectorAll('#wxPick button').forEach(b => { b.classList.toggle('off', ghost); });
-  $('mapHint').textContent = ghost ? 'The ghost picks the track.' : timed ? 'Timed runs and ghosts need a loop track: the training lot and the towns are free drive only.' : '';
+  $('mapHint').textContent = ghost ? 'The ghost picks the track.' : street ? 'Street races run on Midnight City.' : timed ? 'Timed runs and ghosts need a loop track: the training lot and the towns are free drive only.' : '';
   $('mapHint').hidden = !$('mapHint').textContent;
   const pass = TT_MAP === 'pass';
   $('wxHint').textContent = ghost ? 'The ghost picks the weather.' : TT_RAIN ? (pass ? 'Snow on the mountain pass: about half the grip on road tires. Off-road tires bite best; sport tires and slicks slide.' : 'About a quarter less grip and longer stops. Slicks are treacherous.') : (pass ? 'Rain falls as snow up on the mountain pass.' : 'Clear skies.');
@@ -10286,7 +10857,14 @@ const SERIES = [
    ok: () => true, why: '', pool: r => r.tier >= 2 && r.drive === 'AWD' && !CARS[r.body].trikeTips,
    reward: {cash: 9000},
    events: [{id: 'gb1', name: 'Autumn woods', map: 'forest', laps: 1, prize: 3000},
-            {id: 'gb2', name: 'Spectator hairpins', map: 'forestR', laps: 1, prize: 4000}]}
+            {id: 'gb2', name: 'Spectator hairpins', map: 'forestR', laps: 1, prize: 4000}]},
+  // Midnight street racing: illegal, at night, through dumb two-way traffic, against cars from your own tier
+  {id: 'street', cat: 'special', name: 'Midnight Street Racing', rule: 'Any car, at night, through traffic that is not paying attention', skill: 0.82,
+   ok: () => true, why: '', pool: (r, me) => r.tier === me.tier && !CARS[r.body].trikeTips,
+   reward: {cash: 12000},
+   events: [{id: 'nt1', name: 'Downtown dash', map: 'night', laps: 1, prize: 3000},
+            {id: 'nt2', name: 'Wrong way home', map: 'nightR', laps: 1, prize: 4000},
+            {id: 'nt3', name: 'Last call', map: 'night', laps: 2, prize: 6000}]}
 ];
 for (const id of Object.keys(FACTORY_BOX)) if (CARS[id]) CARS[id].specs[1] = CARS[id].specs[1].replace(/^\d+-speed manual/, boxName(id, FACTORY_BOX[id]).replace(/^\w/, c => c.toUpperCase()));
 // Race money was too generous: every race's prize and every cash champion's prize is halved here (rounded to $50), so
@@ -10299,7 +10877,7 @@ for (const se of SERIES) {
 const EVENTS = SERIES.flatMap(se => se.events.map(ev => Object.assign({series: se}, ev)));
 const mapLabel = ev => (ev.rain ? (ev.map === 'pass' || ev.map === 'passR' ? 'In the snow: ' : 'In the rain: ') : '') + mapLabelDry(ev);
 const mapLabelDry = ev => ev.map === 'strip' ? (ev.dist === HALF ? 'Drag strip, a half mile' : 'Drag strip, a quarter mile')
-  : `${{circuit: 'Circuit', circuitR: 'Circuit, reversed', short: 'Club circuit', shortR: 'Club circuit, reversed', plot: 'Parking lot autocross', plotR: 'Parking lot autocross, reversed', dirt: 'Dirt scramble course', rally: 'Gravel rally stage', rallyR: 'Gravel rally stage, reversed', forest: 'Autumn forest stage', forestR: 'Autumn forest stage, reversed', oval: 'Speedway oval', ovalR: 'Speedway oval, reversed', airfield: 'Airfield circuit', pass: 'Mountain pass', passR: 'Mountain pass, reversed'}[ev.map]}, ${ev.laps} ${ev.laps === 1 ? 'lap' : 'laps'}`;
+  : `${{circuit: 'Circuit', circuitR: 'Circuit, reversed', short: 'Club circuit', shortR: 'Club circuit, reversed', plot: 'Parking lot autocross', plotR: 'Parking lot autocross, reversed', dirt: 'Dirt scramble course', rally: 'Gravel rally stage', rallyR: 'Gravel rally stage, reversed', forest: 'Autumn forest stage', forestR: 'Autumn forest stage, reversed', oval: 'Speedway oval', ovalR: 'Speedway oval, reversed', airfield: 'Airfield circuit', pass: 'Mountain pass', passR: 'Mountain pass, reversed', night: 'Midnight City', nightR: 'Midnight City, reversed'}[ev.map]}, ${ev.laps} ${ev.laps === 1 ? 'lap' : 'laps'}`;
 // Prize shares for 1st, 2nd and 3rd. A drag race is one on one, so second there is just the loser: a small consolation.
 const PAY = [1, 0.5, 0.3];
 const payFor = (ev, place) => (ev.map === 'strip' ? [1, 0.15] : PAY)[place - 1] || 0;
@@ -10355,9 +10933,9 @@ function aiLatG(C, mu, skill) {
 }
 // The AI field: drivers in cars from the series' pool, a little faster or slower each
 function makeField(ev, me) {
-  const n = ev.map === 'strip' ? 1 : 5, se = ev.series;
-  let pool = ROSTER.filter(r => CARS[r.body] && !r.special && !r.noAI && se.pool(r, rosterOf(me)));
-  if (!pool.length) pool = ROSTER.filter(r => CARS[r.body] && !r.special && !r.noAI && r.tier === rosterOf(me).tier);
+  const n = ev.map === 'strip' ? 1 : 5, se = ev.series, mine = rosterOf(me) || ROSTER.find(r => r.body === me.body) || {tier: 1};   // (a Test Track street race passes its car by body)
+  let pool = ROSTER.filter(r => CARS[r.body] && !r.special && !r.noAI && se.pool(r, mine));
+  if (!pool.length) pool = ROSTER.filter(r => CARS[r.body] && !r.special && !r.noAI && r.tier === mine.tier);
   const names = DRIVERS.slice().sort(() => Math.random() - 0.5);
   return Array.from({length: n}, (_, i) => {
     const r = pool[Math.floor(Math.random() * pool.length)], C = CARS[r.body];
@@ -10365,7 +10943,7 @@ function makeField(ev, me) {
     const paints = PAINTS.filter(q => q[1]);
     // On the dirt course they keep only their dirt share of grip (an ATC's balloon tires keep nearly all of it)
     const mu = (C.grip ? C.grip[0] : 0.66) * (isDirtMap(ev.map) ? C.offGrip || 0.7 : 1) * (ev.rain ? 0.74 : 1);   // wet roads: their road tires keep about 74%
-    return {name: names[i], r, body: r.body, paint: Math.random() < 0.5 ? r.paint : paints[Math.floor(Math.random() * paints.length)][1],
+    return {name: names[i], r, skill, glow: NEON[i % NEON.length], body: r.body, paint: Math.random() < 0.5 ? r.paint : paints[Math.floor(Math.random() * paints.length)][1],
       // Average power through the gears is about two thirds of peak; a quicker driver uses more of it
       // (aiPower: a series whose field runs built machines, like the Diesel Drag's tuned Cummins)
       P: r.hp * 745.7 * 0.64 * (0.9 + 0.1 * skill) * (se.aiPower || 1), kg: C.mass, latG: aiLatG(C, mu, skill) * (ev.map === 'oval' || ev.map === 'ovalR' ? 1.6 : 1), brk: 6.5 * skill * (ev.rain ? 0.74 : 1),   // (the speedway's banking: much faster through the turns)
@@ -10379,7 +10957,7 @@ function makeField(ev, me) {
 function aiPose(ai) {
   if (RX.kind === 'strip') return {x: ai.u, y: ai.lat, h: 0, dx: 1, dy: 0};
   const p = roadside(((ai.u % RX.L) + RX.L) % RX.L, ai.lat);
-  return {x: p.x, y: p.y, h: Math.atan2(p.dy, p.dx), dx: p.dx, dy: p.dy};
+  return {x: p.x, y: p.y, h: Math.atan2(p.dy, p.dx) + (ai.yaw || 0), dx: p.dx, dy: p.dy};
 }
 function startEvent(i) {
   EVT = i;
@@ -10390,7 +10968,7 @@ function startEvent(i) {
   S.rain = ev.rain || 0;   // a wet race: less grip for everyone (see tireGrip), spray and rain on screen
   camS = null; THR_HOLD = null; CLU_HOLD = null; DUST.length = 0; EXHAUST.length = 0;
   $('log').innerHTML = '';
-  const strip = ev.map === 'strip', L = ROUTE_LEN, ais = ev.series.solo ? [] : makeField(ev, CAREER_CAR);
+  const strip = ev.map === 'strip', L = ROUTE_LEN, ais = ev.series.solo ? [] : makeField(ev, CAREER_CAR || {body: TT_USED.id});
   RX = {ev, kind: strip ? 'strip' : 'circuit', L, laps: ev.laps || 1, target: strip ? (ev.dist || QUARTER) : L * ev.laps, t: 0, armed: false, jump: 0,
         ais, kappa: strip ? null : buildKappa(), cps: strip ? null : [0.25, 0.5, 0.75].map(f => L * f), cpNext: 0, lap: -1, lastU: 0, prog: 0, lat: 0, done: null, uiAt: -1};
   // The grid: the AI cars in front, two by two, and you at the back; on the strip, side by side
@@ -10410,6 +10988,9 @@ function startEvent(i) {
   $('overlay').querySelector('.lbl').textContent = ev.series.name;
   const go = () => { $('overlay').hidden = true; Object.assign(S, {x: RX.grid.x, y: RX.grid.y, h: RX.grid.h, v: 0, vy: 0, r: 0, ww: 0}); RX.armed = true; RX.t = -3.6; };
   if (ev.ghostRun) return showOverlay(ev.name, ghostBriefing(ev), 'Line up', go);
+  if (ev.ttStreet) return showOverlay(ev.name, `<p>${mapLabel(ev)}, at night, against ${ais.map(a => `${a.name} (${a.r.year} ${a.r.name})`).join(', ')}.</p>
+    <p><b>The traffic is real and it is not paying attention.</b> It runs both ways, changes lanes when it likes and stops for no reason. Stay out of the oncoming lanes unless they are clear.</p>
+    <p class="keys">The engine's running: clutch in, first gear, and go on green. Backspace, Esc or &#96; to quit.</p>`, 'Line up', go);
   if (ev.eco) return showOverlay(ev.name, `${fuelWarn(RX.target)}<p>${mapLabel(ev)}, ${(RX.target / 1609.34).toFixed(1)} miles, on your own.</p>
     <p>Finish inside <b>${fmtClock(ecoLimit(ev))}</b> (an average of ${ev.ecoMph} mph) and the medal goes by the fuel you burn: gold at <b>${ev.eco[0]} mpg</b> or better, silver ${ev.eco[1]}, bronze ${ev.eco[2]}. Over the time limit, no medal at all.</p>
     <p><b>Tips:</b> short-shift and cruise in a high gear at part throttle. Off the throttle in gear, fuel injection (and a diesel) cuts the fuel completely, while a carburetor keeps dribbling, so lift early and coast down to the corners instead of braking late. Hard acceleration and high revs burn it fastest.</p>
@@ -10521,12 +11102,14 @@ function aiStep(ai, dt) {
     const vc = k > 1e-4 ? Math.sqrt(ai.latG / k) : 99;
     vAllow = Math.min(vAllow, Math.sqrt(vc * vc + 2 * ai.brk * d));
   }
-  let a = Math.min(ai.P / (ai.kg * Math.max(v, 3)), ai.trac) - (0.15 + (ai.soft || 0) + 0.00035 * (ai.drag || 1) * v * v) - 9.81 * gradeAhead(pose.x, pose.y, pose.h);
+  const nightMap = isNightMap();
+  let a = Math.min(ai.P * (nightMap ? nightBand(ai) : 1) / (ai.kg * Math.max(v, 3)), ai.trac) - (0.15 + (ai.soft || 0) + 0.00035 * (ai.drag || 1) * v * v) - 9.81 * gradeAhead(pose.x, pose.y, pose.h);
   if (ai.vTop && v > ai.vTop) a = Math.min(a, 0);
   if (v > vAllow) a = -Math.min(ai.brk, (v - vAllow) * 3 + 1); else if (v > vAllow - 0.5) a = Math.min(a, 0);
   // You, just ahead in its line: it pulls out to pass, and does not drive through you while it can't
   const dp = RX.prog - ai.u, inLine = Math.abs(RX.lat - ai.lat) < 2.2;
-  if (RX.kind !== 'strip') {
+  if (nightMap) { nightAi(ai, v, dt); if (ai.panic) a = -ai.brk; }
+  else if (RX.kind !== 'strip') {
     ai.latT = dp > -3 && dp < 16 && Math.abs(RX.lat - ai.lane) < 2.8 ? clamp(RX.lat > ai.lane ? RX.lat - 3.4 : RX.lat + 3.4, -4, 4) : ai.lane;
     ai.lat = approach(ai.lat, ai.latT, 1.8 * dt);
   }
@@ -10593,9 +11176,22 @@ function finishEco() {
      ${repGain ? `<p>Reputation <b>+${repGain}</b>.${lvAfter > lvBefore ? ` <b style="color:var(--ok)">Reputation level ${lvAfter}!</b>${newCat ? ` ${newCat.name} races are open.` : ''}` : ''}</p>` : ''}${fuelP}${cupP}${dayP}`,
     'Back to the career', () => giftDue() ? playBillGift() : showCareer('races'));
 }
+// A Test Track street race: just the result, no prize
+function finishStreetRun() {
+  S.nos = false; S.finished = true; RX.done = RX.t + RX.jump; bigMsg('');
+  const rows = RX.ais.map(ai => ({name: `${ai.name} (${ai.r.name})`, t: ai.fin !== null ? ai.fin : RX.t + (RX.target - ai.u) / Math.max(ai.v, 15)})).concat([{name: 'You (' + CFG.name + ')', t: RX.done, me: true}]).sort((a, b) => a.t - b.t);
+  const pos = rows.findIndex(r => r.me) + 1;
+  $('overlay').querySelector('.lbl').textContent = 'Test Track';
+  showOverlay(pos === 1 ? 'Street race: you win!' : `Street race: ${ordinal(pos)}`,
+    `<table class="cr-table" style="margin-bottom:10px">${rows.map((r, k) => `<tr${r.me ? ' style="color:var(--accent)"' : ''}><td>${ordinal(k + 1)}</td><td>${r.name}</td><td style="text-align:right">${k === 0 ? fmtClock(r.t) : '+' + (r.t - rows[0].t).toFixed(1) + ' s'}</td></tr>`).join('')}</table>
+     <p style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="stGarage" style="background:transparent;color:inherit;border:1px solid var(--line)">Back to the garage</button></p>`,
+    'Run again', () => reset());
+  $('stGarage').onclick = () => showGarage();
+}
 function finishEvent() {
   if (RX.ev.ghostRun) return finishTimedRun();
   if (RX.ev.eco) return finishEco();
+  if (RX.ev.ttStreet) return finishStreetRun();
   S.nos = false;   // the hiss stops at the line
   S.finished = true; RX.done = RX.t + RX.jump + (RX.pen || 0); bigMsg('');
   const ev = RX.ev, target = RX.target;
