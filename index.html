@@ -469,6 +469,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
       <button type="button" data-map="suburb">Maple Grove</button>
       <button type="button" data-map="city">Downtown</button>
       <button type="button" data-map="night">Midnight City</button>
+      <button type="button" data-map="trail">Boulder Canyon</button>
     </div>
     <p class="tt-hint" id="mapHint"></p>
     </section>
@@ -1529,7 +1530,7 @@ Object.assign(CARS, {
   pickup4x4: rosterCar('pickup4x4', {
     short: 'Pickup 4x4 (built)', year: 1990, drive: 'awd', awdFront: 0.5, mass: 1720, r: 0.42, fd: 4.88, gears: [3.954, 2.141, 1.384, 1.0, 0.85], rev: 4.22, lowRange: 2.28,
     hp: 135, hpRpm: 4800, peakTq: 215, tqPeak: 3200, idle: 750, redline: 5200, gaugeMax: 7000, wb: 2.8, front: 0.54, cyl: 4, inertia: 3, lowFrac: 0.78, idleTq: 0.38,
-    grip: [0.66, 0.82], eyeH: 2.05, eyeHor: 0.47, paint: '#a8362a', cgH: 0.95, dragMul: 1.75, offGrip: 0.98, offDrag: 0.3, snowBase: 0.72, wetGrip: 0.75,
+    grip: [0.66, 0.82], eyeH: 2.05, eyeHor: 0.47, paint: '#a8362a', cgH: 0.95, dragMul: 1.75, offGrip: 0.98, offDrag: 0.3, snowBase: 0.72, wetGrip: 0.75, wade: 1.9,
     engine: '22R-E 2.4 fuel-injected, built: 135 hp at 4,800 rpm, 215 Nm at 3,200 rpm (116 hp stock)', note: '33s, long travel, 4.88s and low range. Press {k:h} to shift the transfer case, stopped or with the clutch in',
     blurb: 'A 1990 Toyota Pickup 4x4 with the fuel-injected 22R-E and everything bolted to it: long-travel lift, 33s, a winch, a snorkel and a light bar. Press {k:h} for low range. Slow on the road and unstoppable off it.',
     shape: (() => {
@@ -2349,7 +2350,16 @@ const NIGHT_VIA = [[450, 769, 450, -300, 10, 7.2], [459, 110, 1250, 110, 7.6, 7.
 const isNightMap = () => MAP_KIND === 'night' || MAP_KIND === 'nightR';
 const isFlatMap = k => k === 'oval' || k === 'ovalR' || k === 'airfield';
 // The loose-surface maps: the dirt scramble course and the rally stage, both ways
-const isDirtMap = k => k === 'dirt' || k === 'rally' || k === 'rallyR' || k === 'forest' || k === 'forestR';
+// Boulder Canyon's rock trail (see trailData): about 5.7 km of narrow dirt looping through the canyon, and the rivers it fords
+const TRAIL_ROUTE = smoothLoop([[0, 0], [120, 10], [240, -20], [330, 30], [420, 10], [520, 60], [560, 150], [500, 210], [400, 190], [340, 240], [390, 310], [500, 300], [620, 270], [740, 300], [800, 390], [730, 460], [620, 430], [540, 480], [600, 560], [720, 550], [840, 520], [960, 560], [1010, 660], [930, 730], [810, 700], [700, 740], [620, 820], [500, 800], [430, 720], [330, 700], [260, 770], [160, 800], [60, 750], [90, 650], [190, 620], [240, 540], [160, 470], [60, 500], [-30, 560], [-110, 500], [-80, 400], [10, 360], [100, 390], [180, 340], [130, 260], [30, 250], [-60, 290], [-140, 230], [-130, 130], [-60, 60]]);
+const TRAIL_RIVERS = [
+  {w: 10, pts: [[470, -120], [480, 60], [450, 150], [470, 260], [510, 380], [520, 480], [480, 600], [560, 720], [560, 960]]},
+  {w: 9, pts: [[-300, 440], [-40, 430], [130, 430], [300, 470], [480, 600]]},
+  {w: 11, pts: [[1180, 500], [900, 620], [760, 620], [650, 640], [480, 600]]},
+  {w: 8, pts: [[-300, 180], [-60, 180], [60, 160], [200, 180], [330, 130], [450, 150]]}];
+const TRAIL_ZW = 2, TRAIL_FORD = 0.42, TRAIL_RW = 3.4;
+const isTrailMap = () => MAP_KIND === 'trail';
+const isDirtMap = k => k === 'dirt' || k === 'rally' || k === 'rallyR' || k === 'forest' || k === 'forestR' || k === 'trail';
 const isDirt = () => isDirtMap(MAP_KIND);
 // On loose ground: off the road anywhere but the open lots, or anywhere on the dirt course
 const onDirt = () => isDirt() || (S.off && !isPlot());
@@ -2410,14 +2420,14 @@ const isPlot = () => MAP_KIND === 'plot' || MAP_KIND === 'plotR';
 function setMap(kind) {
   if (MAP_KIND === kind) return;
   MAP_KIND = kind;
-  CFG.RW = kind === 'night' || kind === 'nightR' ? 7.5 : kind === 'forest' || kind === 'forestR' ? 3.6 : kind === 'suburb' || kind === 'rally' || kind === 'rallyR' || kind === 'pass' || kind === 'passR' ? 4 : isFlatMap(kind) ? 6 : 5;   // narrow streets and mountain roads, a wide speedway and airfield
+  CFG.RW = kind === 'trail' ? 3.4 : kind === 'night' || kind === 'nightR' ? 7.5 : kind === 'forest' || kind === 'forestR' ? 3.6 : kind === 'suburb' || kind === 'rally' || kind === 'rallyR' || kind === 'pass' || kind === 'passR' ? 4 : isFlatMap(kind) ? 6 : 5;   // narrow streets and mountain roads, a wide speedway and airfield
   if (kind === 'suburb' || kind === 'city') buildNetwork(kind === 'city' ? CITY_SEGS : SUBURB_SEGS);
-  else buildRoute(kind === 'night' ? NIGHT_ROUTE : kind === 'nightR' ? reversed(NIGHT_ROUTE) : kind === 'lot' ? LOT_ROUTE : kind === 'strip' ? STRIP_ROUTE
+  else buildRoute(kind === 'trail' ? TRAIL_ROUTE : kind === 'night' ? NIGHT_ROUTE : kind === 'nightR' ? reversed(NIGHT_ROUTE) : kind === 'lot' ? LOT_ROUTE : kind === 'strip' ? STRIP_ROUTE
     : kind === 'circuitR' ? reversed(CIRCUIT_ROUTE) : kind === 'short' ? SHORT_ROUTE : kind === 'shortR' ? reversed(SHORT_ROUTE)
     : kind === 'plot' ? PLOT_ROUTE : kind === 'plotR' ? reversed(PLOT_ROUTE) : kind === 'dirt' ? DIRT_ROUTE : kind === 'rally' ? RALLY_ROUTE : kind === 'rallyR' ? reversed(RALLY_ROUTE) : kind === 'forest' ? FOREST_ROUTE : kind === 'forestR' ? reversed(FOREST_ROUTE) : kind === 'oval' ? OVAL_ROUTE : kind === 'ovalR' ? reversed(OVAL_ROUTE)
     : kind === 'airfield' ? AIRFIELD_ROUTE : kind === 'pass' ? PASS_ROUTE : kind === 'passR' ? reversed(PASS_ROUTE) : CIRCUIT_ROUTE);
-  DIRT_BALES.length = 0; if (isDirtMap(kind) && kind !== 'forest' && kind !== 'forestR') placeBales();   // (the forest stage has a crowd instead)
-  FANS = null; AIRF_CONES = null; NIGHT = null; NIGHT_RT = null;
+  DIRT_BALES.length = 0; if (isDirtMap(kind) && kind !== 'forest' && kind !== 'forestR' && kind !== 'trail') placeBales();   // (the forest stage has a crowd instead)
+  FANS = null; AIRF_CONES = null; NIGHT = null; NIGHT_RT = null; TRAIL_D = null;
   CFG.offMax = kind === 'lot' || isPlot() ? 200 : 40;   // the lot is open pavement, so it is not bogged down near the lines
   RM.d = null;
 }
@@ -2430,6 +2440,7 @@ function elev(x, y) {
   if (MAP_KIND === 'strip' || isPlot() || isFlatMap(MAP_KIND)) return 0;
   if (MAP_KIND === 'forest' || MAP_KIND === 'forestR') return 1.6 * (9 * Math.sin(x / 170 + 0.6) * Math.cos(y / 150) + 5 * Math.sin(x / 70 - y / 90 + 1.7));   // the wooded hillside
   if (MAP_KIND === 'pass' || MAP_KIND === 'passR') return 2.6 * (9 * Math.sin(x / 170 + 0.6) * Math.cos(y / 150) + 5 * Math.sin(x / 70 - y / 90 + 1.7));   // the mountains
+  if (MAP_KIND === 'trail') return trailElev(x, y);
   if (MAP_KIND === 'night' || MAP_KIND === 'nightR') return nightElev(x, y);   // flat but for the raised highway
   if (MAP_KIND === 'city') return 0;   // downtown is flat
   if (MAP_KIND === 'suburb') return 2.5 * Math.sin(x / 130 + 0.4) * Math.cos(y / 160) + 1.2 * Math.sin((x + y) / 70);   // gentle rises
@@ -2540,6 +2551,7 @@ function makeCity() {
     if (MAP_KIND === 'airfield' && cx > AIRF.bounds[0] && cx < AIRF.bounds[2] && cy > AIRF.bounds[1] && cy < AIRF.bounds[3]) continue;   // the airfield is open   // the speedway: none inside the stadium or its parking
     if (distToRoad(cx, cy) < CFG.RW + Math.max(w, d) / 2 + 3) continue;
     if (isPlot() && cx > -15 && cx < PLOT.W + 15 && cy > -15 && cy < PLOT.H + 15) continue;   // nothing inside the parking lot
+    if (isTrailMap() && elev(cx, cy) < TRAIL_ZW + 1) continue;   // nor in Boulder Canyon's rivers
     const x0 = cx - w / 2, x1 = cx + w / 2, y0 = cy - d / 2, y1 = cy + d / 2;
     if (out.some(b => x0 < b.x1 + 2 && x1 > b.x0 - 2 && y0 < b.y1 + 2 && y1 > b.y0 - 2)) continue;
     const c = pal[Math.floor(Math.random() * pal.length)];
@@ -3889,7 +3901,7 @@ const tempFrac = () => S.temp <= 90 ? clamp(0.5 * (S.temp - 40) / 50, 0, 0.5) : 
 const idleLump = () => { const P = SOUND[CFG.engineKey] || SOUND[CFG.body] || SOUND.pickup; return P.lope || 0; };
 // Off the road (grass and dirt; not the open driving-school lot or the parking lot) the tires keep only part of their
 // grip (CFG.dirtGrip, better with dirt tires), for traction, cornering and braking alike
-const surfGrip = () => (onDirt() ? (CFG.dirtGrip || 0.7) * (CFG.suspDirt || 1) : 1) * tireGrip();   // stiff suspension skips over rough ground
+const surfGrip = () => (onDirt() ? (CFG.dirtGrip || 0.7) * (CFG.suspDirt || 1) : 1) * tireGrip() * (S.water > 0.1 ? 0.8 : 1);   // stiff suspension skips over rough ground
 // What the tires have left: worn tread loses up to 10% of the grip in the dry. In the rain (S.rain) grip falls to the
 // compound's wet figure (CFG.wetGrip), and worn tread clears much less water: a bald tire keeps 60% of that.
 const snowing = () => !!S.rain && !SHOWCASE && (MAP_KIND === 'pass' || MAP_KIND === 'passR');
@@ -3992,6 +4004,7 @@ function drawRollGauge() {
 function physics(dt) {
   S.t += dt;
   if (CFG.lowRange) lowRangeStep();
+  if (isTrailMap() && !S.finished) trailStep(dt);
   trikeStep(dt);
   // On the banked speedway: the slope across the car (tan of its angle, + when the ground rises to the right) pulls it down
   // the bank, and a car cornering on the banking is pressed into it, so its tires grip harder (N = g cos + a sin)
@@ -4241,7 +4254,7 @@ function physics(dt) {
   Fd += Fra;
   if (S.ww - S.v > 4 && !S.spin && !air && !CFG.horse) { S.spin = true; log('Wheelspin. Ease off the throttle.', 'warn'); }
   else if (S.ww - S.v < 1) S.spin = false;
-  const rolling = 0.15 + 0.00035 * (CFG.dragMul || 1) * S.v * S.v + (onDirt() ? (CFG.dirtDrag ?? 1.2) : 0);   // dragMul: slippery or brick-shaped
+  const rolling = 0.15 + 0.00035 * (CFG.dragMul || 1) * S.v * S.v + (onDirt() ? (CFG.dirtDrag ?? 1.2) : 0) + (S.water ? S.water * (2.4 + 0.05 * S.v * S.v) : 0);   // (dragMul: slippery or brick-shaped; water drags hard, and harder the faster you push through it)
   // The brakes stop the car as hard as the tires let them: 7.5 m/s/s on its stock tires, more with grippier tires or
   // stiffer suspension, less on worse ones (dirt tread on pavement)
   const gripB = (CFG.muF + CFG.muR) / (CFG.muBrake0 || CFG.muF + CFG.muR);
@@ -4876,7 +4889,7 @@ function drawTodGrade() {
 function drawSky() {
   // The view spans VW / F radians of the panorama, which is a full turn across SKY_W pixels
   // The title keeps the sunset; the game modes use the midday sky
-  const TEX = SHOWCASE ? SKY : isNightMap() ? SKY_NIGHT : todNow() !== 'day' ? TOD[todNow()].sky() : isPassMap() ? SKY_ALPINE : isForestMap() ? SKY_AUTUMN : SKY_DAY;
+  const TEX = SHOWCASE ? SKY : isNightMap() ? SKY_NIGHT : isTrailMap() && todNow() === 'day' ? SKY_CANYON : todNow() !== 'day' ? TOD[todNow()].sky() : isPassMap() ? SKY_ALPINE : isForestMap() ? SKY_AUTUMN : SKY_DAY;
   const P = VIEW_PAD, W2 = VW + 2 * P;   // wider than the screen while the cockpit view is rolled, so no corner is left bare
   if (P) ctx.translate(-P, 0);
   const sw = (W2 / F) / (Math.PI * 2) * SKY_W;
@@ -4887,7 +4900,7 @@ function drawSky() {
   ctx.drawImage(TEX, src, 0, first, SKY_H, 0, -P, first * scale, HOR + 2 + P);
   if (first < sw) ctx.drawImage(TEX, 0, 0, sw - first, SKY_H, first * scale, -P, (sw - first) * scale, HOR + 2 + P);
   if (P) ctx.translate(P, 0);
-  ctx.fillStyle = !SHOWCASE && isNightMap() ? '#0d0e14' : !SHOWCASE && isPassMap() ? '#5d6450' : '#3f5b2c'; ctx.fillRect(-P, HOR, W2, VH - HOR + P);
+  ctx.fillStyle = !SHOWCASE && isTrailMap() ? '#8f6a48' : !SHOWCASE && isNightMap() ? '#0d0e14' : !SHOWCASE && isPassMap() ? '#5d6450' : '#3f5b2c'; ctx.fillRect(-P, HOR, W2, VH - HOR + P);
   if (S.rain && !SHOWCASE) { ctx.fillStyle = isNightMap() ? `rgba(12,13,22,${0.7 * S.rain})` : snowing() ? `rgba(198,204,212,${0.86 * S.rain})` : `rgba(104,112,122,${0.82 * S.rain})`; ctx.fillRect(-P, -P, W2, HOR + 2 + P); }   // overcast (pale with snow)
 }
 
@@ -5037,6 +5050,22 @@ const SKY_NIGHT = (() => {
         g.fillStyle = rnd() < 0.7 ? 'rgba(255,208,130,0.8)' : 'rgba(170,205,255,0.7)'; g.fillRect(wx, wy, 1, 1);
       }
       x += w + rnd() * 3;
+    }
+  }
+  return c;
+})();
+// Boulder Canyon's sky: the day's, over a far line of flat-topped red mesas
+const SKY_CANYON = (() => {
+  const c = document.createElement('canvas');
+  c.width = SKY_W; c.height = SKY_H;
+  const g = c.getContext('2d'), rnd = seeded(77);
+  g.drawImage(SKY_DAY, 0, 0);
+  for (const [col, lo, hi] of [['#b8876a', 0.08, 0.22], ['#94573c', 0.04, 0.15]]) {
+    g.fillStyle = col;
+    for (let x = 0; x < SKY_W;) {
+      const w = 30 + rnd() * 110, h = SKY_H * (lo + rnd() * hi), s = 6 + rnd() * 10;
+      g.beginPath(); g.moveTo(x, SKY_H); g.lineTo(x + s, SKY_H - h); g.lineTo(x + w - s, SKY_H - h); g.lineTo(x + w, SKY_H); g.fill();
+      x += w * (0.5 + rnd() * 0.9);
     }
   }
   return c;
@@ -6090,6 +6119,17 @@ function buildRoadMap() {
       }
     }
   });
+  if (isTrailMap()) {   // Boulder Canyon's ledges are bare rock
+    const H = TRAIL_H || (TRAIL_H = trailHeights());
+    for (const g of SEGS) for (const [a, b] of H.steps) {
+      if (g.u0 > Math.max(a, b) || g.u0 + g.len < Math.min(a, b)) continue;
+      const rx = -g.dy, ry = g.dx;
+      for (let s = 0; s <= g.len; s += 0.25) for (let o = -CFG.RW; o <= CFG.RW; o += 0.25) {
+        const i = Math.floor((g.ax + g.dx * s + rx * o - RM.ox) / RM.R), j = Math.floor((g.ay + g.dy * s + ry * o - RM.oy) / RM.R);
+        if (i >= 0 && j >= 0 && i < RM.w && j < RM.h) RM.d[j * RM.w + i] = 20;
+      }
+    }
+  }
   if (nightMap) for (const q of (nightData(), NIGHT.stubs)) {   // the streets that carry on past the walls
     const rx = -q.dy, ry = q.dx;
     for (let s = 2; s <= q.wall + q.len; s += 0.2) for (let o = -q.hw; o <= q.hw; o += 0.2) {
@@ -6131,7 +6171,7 @@ function drawTerrain() {
   const snow = snowing(), wet = S.rain && !SHOWCASE && !snow ? 1 - 0.28 * S.rain : 1;   // wet ground is darker; snow is not
   const pass = !SHOWCASE && isPassMap();   // the mountain pass has its own ground and road colors
   const forest = !SHOWCASE && isForestMap();   // the forest stage: a floor of fallen leaves
-  const nightG = isNightMap();
+  const nightG = isNightMap(), trailG = isTrailMap();
   for (let x = -VIEW_PAD; x < VW + VIEW_PAD; x += step) {   // (past the screen's sides while the cockpit view is rolled)
     const k = (x + 2 - VW / 2) / F;              // lateral ratio for this column
     let top = VH + VIEW_PAD;
@@ -6149,7 +6189,7 @@ function drawTerrain() {
         const n = Math.hypot(gx, gy, 1);
         const dot = Math.max(0, (-gx * SD[0] - gy * SD[1] + SD[2]) / n);
         const sf = surfaceAt(wx, wy), b = (0.45 + 0.6 * dot) * wet;
-        const base = nightG ? nightGround(wx, wy, sf) : forest && sf === 0 ? forestFloor(wx, wy) : snow ? SNOW_PAL[sf] || SNOW_PAL[0] : pass ? (sf === 0 ? alpineGround(g, wx, wy) : PASS_PAL[sf] || TERRAIN_PAL[sf]) : TERRAIN_PAL[sf];
+        const base = trailG ? trailGround(wx, wy, sf) : nightG ? nightGround(wx, wy, sf) : forest && sf === 0 ? forestFloor(wx, wy) : snow ? SNOW_PAL[sf] || SNOW_PAL[0] : pass ? (sf === 0 ? alpineGround(g, wx, wy) : PASS_PAL[sf] || TERRAIN_PAL[sf]) : TERRAIN_PAL[sf];
         ctx.fillStyle = `rgb(${base[0] * b | 0},${base[1] * b | 0},${base[2] * b | 0})`;
         ctx.fillRect(x, Math.floor(y), step, Math.ceil(top - y) + 1);
         top = y;
@@ -6223,6 +6263,7 @@ function glInit() {
 // The ground color at a point, exactly as the ray march picks it (before the sun shading)
 function groundRgb(wx, wy, flags) {
   const sf = surfaceAt(wx, wy);
+  if (isTrailMap()) return trailGround(wx, wy, sf);
   if (isNightMap()) return nightGround(wx, wy, sf);
   if (flags.forest && sf === 0) return forestFloor(wx, wy);
   if (flags.snow) return SNOW_PAL[sf] || SNOW_PAL[0];
@@ -6312,6 +6353,246 @@ function glTerrain() {
   ctx.drawImage(GLT.cv, -P, -P, Wc, Hc);   // into the 2D picture, where the ground has always gone
   return true;
 }
+/* ---------- Boulder Canyon ---------- */
+// The rock-crawling trail ('trail'): a long loop of narrow dirt (CFG.RW 3.4) through red canyon country. Three things make
+// it hard. Giant boulders stand in the road itself, leaving gaps not much wider than a car, and hitting one stops you
+// dead (trailStep: solid, with two circles for the car). Rivers cross it again and again: the road is a shallow ford
+// (TRAIL_FORD deep) marked by orange stakes, and either side the channel drops away; past a car's wading depth (wadeOf)
+// the water floods the intake and the engine is finished, though a snorkel laughs at it. And rock ledges climb steeply
+// out of the road, where low range earns its keep. The heights are one grid (trailHeights), built once and read by elev.
+let TRAIL_H = null, TRAIL_D = null;
+function trailHeights() {
+  // The route as evenly spaced points, with the distance along it
+  const pts = [], n0 = TRAIL_ROUTE.length;
+  let u = 0;
+  for (let i = 0; i < n0; i++) { const a = TRAIL_ROUTE[i], b = TRAIL_ROUTE[(i + 1) % n0], l = Math.hypot(b[0] - a[0], b[1] - a[1]), s = Math.max(1, Math.round(l / 2)); for (let k = 0; k < s; k++) { pts.push([a[0] + (b[0] - a[0]) * k / s, a[1] + (b[1] - a[1]) * k / s, u + l * k / s]); } u += l; }
+  const L = u, n = pts.length;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const p of pts) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+  const G = {x0: Math.floor(x0 - 260), y0: Math.floor(y0 - 260)}; G.w = Math.ceil(x1 - x0 + 520); G.h = Math.ceil(y1 - y0 + 520);
+  const hills = (x, y) => Math.max(TRAIL_ZW + 1.4, 15 + 12 * Math.sin(x / 190 + 0.6) * Math.cos(y / 170) + 6 * Math.sin(x / 73 - y / 91 + 1.7) + 2.2 * Math.sin(x / 23 + y / 31));
+  // The rivers: how far each cell is from the nearest channel, as a share of that channel's half width
+  const riv = new Float32Array(G.w * G.h).fill(9), mid = [];
+  for (const R of TRAIL_RIVERS) {
+    const w = R.w;
+    for (let i = 0; i < R.pts.length - 1; i++) {
+      const a = R.pts[i], b = R.pts[i + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]), s = Math.ceil(l / 3);
+      for (let k = 0; k <= s; k++) {
+        const x = a[0] + (b[0] - a[0]) * k / s, y = a[1] + (b[1] - a[1]) * k / s, r = w + 12;
+        mid.push([x, y, w]);
+        for (let j = Math.max(0, Math.floor(y - r - G.y0)); j <= Math.min(G.h - 1, Math.ceil(y + r - G.y0)); j++) for (let e = Math.max(0, Math.floor(x - r - G.x0)); e <= Math.min(G.w - 1, Math.ceil(x + r - G.x0)); e++) {
+          const q = Math.hypot(G.x0 + e - x, G.y0 + j - y) / w, o = j * G.w + e;
+          if (q < riv[o]) riv[o] = q;
+        }
+      }
+    }
+  }
+  const inRiver = p => { const e = Math.round(p[0] - G.x0), j = Math.round(p[1] - G.y0); return e >= 0 && j >= 0 && e < G.w && j < G.h && riv[j * G.w + e] < 1.15; };
+  // The road's height: the hills smoothed along it, forced down to the ford at every river, with its grade held back
+  let prof = pts.map(p => hills(p[0], p[1]));
+  for (let pass = 0; pass < 2; pass++) { const P = prof.slice(), W = 22; prof = prof.map((_, i) => { let a = 0; for (let k = -W; k <= W; k += 2) a += P[(i + k + n) % n]; return a / (W + 1); }); }
+  const anchor = pts.map(inRiver), fordZ = TRAIL_ZW - TRAIL_FORD;
+  for (let i = 0; i < n; i++) if (anchor[i]) prof[i] = fordZ;
+  const g = 0.19 * 2;   // (a 19% grade at most, over the 2 m between points)
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < n * 2; i++) { const a = i % n, b = (i + 1) % n; if (!anchor[b]) prof[b] = clamp(prof[b], prof[a] - g, prof[a] + g); }
+    for (let i = n * 2; i > 0; i--) { const a = i % n, b = (i - 1 + n) % n; if (!anchor[b]) prof[b] = clamp(prof[b], prof[a] - g, prof[a] + g); }
+  }
+  // The rock ledges: a steep slab climbing from the road, a flat top and a drop back down. Kept clear of the fords.
+  const steps = [];
+  for (const [f, up, len] of [[0.075, 1.9, 6], [0.2, 2.4, 7], [0.335, 2.8, 8], [0.47, 2.2, 6], [0.585, 3.2, 8.5], [0.72, 2.6, 7], [0.86, 3.4, 9]]) {
+    let i0 = Math.floor(f * n);
+    while (anchor.slice(i0, i0 + 30).some(Boolean)) i0 = (i0 + 20) % n;
+    const up0 = Math.round(len / 2), flat = 7, dn = Math.round(len * 0.6);
+    for (let k = 0; k <= up0 + flat + dn; k++) { const z = k <= up0 ? up * k / up0 : k <= up0 + flat ? up : up * (1 - (k - up0 - flat) / dn); prof[(i0 + k) % n] += z; }
+    steps.push([pts[i0][2], pts[(i0 + up0 + flat + dn) % n][2]]);
+  }
+  // Stamp the road into the grid, nearest point wins
+  const near = new Float32Array(G.w * G.h).fill(1e9), road = new Float32Array(G.w * G.h), Rr = TRAIL_RW + 22;
+  for (let i = 0; i < n; i++) {
+    const [x, y] = pts[i], z = prof[i];
+    for (let j = Math.max(0, Math.floor(y - Rr - G.y0)); j <= Math.min(G.h - 1, Math.ceil(y + Rr - G.y0)); j++) for (let e = Math.max(0, Math.floor(x - Rr - G.x0)); e <= Math.min(G.w - 1, Math.ceil(x + Rr - G.x0)); e++) {
+      const d = Math.hypot(G.x0 + e - x, G.y0 + j - y), o = j * G.w + e;
+      if (d < near[o]) { near[o] = d; road[o] = z; }
+    }
+  }
+  // Everything together: the hills, cut by the channels, blended into the road (tightly beside a river, so the deep water
+  // comes right up to the ford's edge). Everything but a channel stays above the water.
+  G.d = new Float32Array(G.w * G.h);
+  for (let j = 0; j < G.h; j++) for (let e = 0; e < G.w; e++) {
+    const o = j * G.w + e, x = G.x0 + e, y = G.y0 + j, q = riv[o], T = hills(x, y), bank = smooth01(1.75, 0.95, q);
+    const bed = TRAIL_ZW - 1.7 * Math.max(0, 1 - q * q) + Math.max(0, q - 1) * 3;
+    const hr = T + (bed - T) * bank, nr = near[o];
+    let z = hr;
+    if (nr < Rr) { const b = 14 + (3 - 14) * bank, f = smooth01(TRAIL_RW + 1.2 + b, TRAIL_RW + 1.2, nr); z = hr + (road[o] - hr) * f; }
+    G.d[o] = z;
+  }
+  G.riv = riv; G.prof = prof; G.pts = pts; G.steps = steps; G.anchor = anchor; G.len = L;
+  return G;
+}
+function trailElev(x, y) {
+  const H = TRAIL_H || (TRAIL_H = trailHeights()), fx = x - H.x0, fy = y - H.y0, i = Math.floor(fx), j = Math.floor(fy);
+  if (i < 0 || j < 0 || i >= H.w - 1 || j >= H.h - 1) return TRAIL_ZW + 8;
+  const a = fx - i, b = fy - j, o = j * H.w + i, d = H.d;
+  return (d[o] * (1 - a) + d[o + 1] * a) * (1 - b) + (d[o + H.w] * (1 - a) + d[o + H.w + 1] * a) * b;
+}
+// The colors of the canyon: bands of red rock and sand by height, sage scrub, gravel at the water, and a dark bed under it
+function trailGround(x, y, sf) {
+  const h = trailElev(x, y);
+  if (sf === 20) { const v = 118 + 16 * Math.sin(x * 1.3 + y * 0.9); return [v * 1.2, v * 0.92, v * 0.74]; }   // a rock ledge
+  if (h < TRAIL_ZW - 0.05) { const k = clamp((TRAIL_ZW - h) / 1.7, 0, 1); return [96 - 52 * k, 90 - 40 * k, 72 - 24 * k]; }   // under the water
+  if (sf === 6 || sf === 7) { const v = sf === 7 ? 0.82 : 1, w = 8 * Math.sin(x * 0.8 + y * 0.6); return [(158 + w) * v, (120 + w) * v, (84 + w * 0.7) * v]; }
+  if (h < TRAIL_ZW + 0.9) return [156, 140, 112];   // the gravel banks
+  const band = Math.sin(h * 1.15 + x / 180) * 0.5 + 0.5, sage = Math.max(0, Math.sin(x / 17 + y / 23) * Math.sin(x / 41 - y / 29) - 0.25) * 1.2;
+  const r = 182 - 38 * band, g = 132 - 40 * band, b = 92 - 26 * band;
+  return [r + (112 - r) * sage, g + (120 - g) * sage, b + (78 - b) * sage];
+}
+// A boulder: stacked rings of lumpy sides, lit by the sun, sunk a little into the ground. Kept as polygons for either renderer.
+function trailRockPolys(R, rnd, low) {
+  const n = low ? 5 : 7, base = trailElev(R.x, R.y) - 0.5, rings = [[0, 1], [0.3, 1.02], [0.62, 0.84], [0.86, 0.52], [1, 0.16]], rad = Array.from({length: n}, () => 0.82 + rnd() * 0.36);
+  const P = (k, i) => { const a = R.rot + i / n * 6.2832, q = rings[k][1] * R.r * rad[(i + k) % n]; return [R.x + Math.cos(a) * q, R.y + Math.sin(a) * q, base + rings[k][0] * (R.h + 0.5)]; };
+  const out = [], rgb = R.rgb;
+  for (let k = 0; k < rings.length - 1; k++) for (let i = 0; i < n; i++) {
+    const a = R.rot + (i + 0.5) / n * 6.2832, nx = Math.cos(a), ny = Math.sin(a), l = (0.52 + 0.48 * Math.max(0, nx * SUN_V[0] + ny * SUN_V[1])) * (0.86 + k * 0.1), j = (i + 1) % n;
+    out.push({pts: [P(k, i), P(k, j), P(k + 1, j), P(k + 1, i)], col: rgbS(rgb[0] * l, rgb[1] * l, rgb[2] * l), nx, ny});
+  }
+  out.push({pts: Array.from({length: n}, (_, i) => P(4, i)), col: rgbS(rgb[0] * 1.1, rgb[1] * 1.1, rgb[2] * 1.1)});
+  return out;
+}
+const TRAIL_ROCKS_RGB = [[150, 96, 68], [128, 84, 62], [166, 122, 86], [112, 92, 80], [140, 104, 84]];
+function trailData() {
+  if (TRAIL_D) return TRAIL_D;
+  const H = TRAIL_H || (TRAIL_H = trailHeights()), rnd = seeded(4242), L = ROUTE_LEN, W = TRAIL_RW, rocks = [], stakes = [], water = [], grid = new Map(), low = LOWG();
+  const onLedge = u => H.steps.some(([a, b]) => { const m = ((u - a) % L + L) % L; return m < ((b - a + L) % L) + 8 || m > L - 8; });
+  const inWater = u => { const p = pointAt(((u % L) + L) % L); return trailElev(p.x, p.y) < TRAIL_ZW + 0.05; };
+  const add = (x, y, r, h) => {
+    const R = {x, y, r, h, rot: rnd() * 6.28, rgb: TRAIL_ROCKS_RGB[Math.floor(rnd() * 5)]};
+    R.polys = trailRockPolys(R, rnd, low);
+    rocks.push(R);
+    const c = Math.ceil((r + 2) / 16);
+    for (let a = -c; a <= c; a++) for (let b = -c; b <= c; b++) { const k = (Math.floor(x / 16) + a) + ',' + (Math.floor(y / 16) + b); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(R); }
+    return R;
+  };
+  const at = (u, o, r, h) => { const p = roadside(((u % L) + L) % L, o); return add(p.x, p.y, r, h); };
+  // The ones in the way. Every so often: one giant from a side leaving a gap, a slalom of two from opposite sides, or a
+  // narrows with a rock each side. The gap is never under 3.2 m. None on a ledge, nor just past the start.
+  let side = 1, kind = 0;
+  for (let u = 110; u < L - 90;) {
+    if (onLedge(u) || onLedge(u + 40) || inWater(u) || inWater(u + 30)) { u += 12; continue; }
+    const k = kind++ % 4, r = 2.5 + rnd() * 1.4;
+    if (k === 0 || k === 2) {   // a slalom
+      at(u, side * (W + r - 3.1), r, r * (1.2 + rnd() * 0.6));
+      at(u + 24 + rnd() * 8, -side * (W + r - 3.1), 2.3 + rnd() * 1.4, r * (1.1 + rnd() * 0.6));
+      u += 36;
+    } else if (k === 1) {       // a giant, half across the road
+      const g = 5.5 + rnd() * 3.5; at(u, side * (W + g - 3.2), g, g * (1.3 + rnd() * 0.7));
+      side = -side; u += 14;
+    } else {                    // the narrows: 3.2 m between two rocks
+      const off = (rnd() - 0.5) * 1.6, a = 2.6 + rnd(), b = 2.6 + rnd();
+      at(u, off + 1.6 + a, a, a * 1.4); at(u + 1.5, off - 1.6 - b, b, b * 1.4);
+      u += 10;
+    }
+    side = -side; u += 60 + rnd() * 70;
+  }
+  // The rivers: a rock in nearly every ford, and orange stakes down both edges of the shallow line
+  const crossed = [];
+  for (let u = 0, on = false; u < L; u += 2) { const w = inWater(u); if (w && !on) crossed.push(u); on = w; }
+  crossed.forEach((c, i) => {
+    let e = c; while (inWater(e) && e < c + 200) e += 2;
+    for (let s = c - 3; s <= e + 3; s += 7) for (const sd of [-1, 1]) { const p = roadside(((s % L) + L) % L, sd * (W + 0.2)); stakes.push({x: p.x, y: p.y}); }
+    if (e - c > 10 && i % 5 !== 4) at((c + e) / 2, (i % 2 ? 1 : -1) * 1.7, 1.25, 1.5);
+  });
+  // Rocks lining the trail, close enough that you cannot just wander off it
+  for (const sd of [-1, 1]) for (let u = 40; u < L - 20; u += 7 + rnd() * 13) {
+    if (inWater(u)) continue;
+    const r = 0.8 + Math.pow(rnd(), 2) * 2.6, p = roadside(u, sd * (W + 0.9 + r * 0.75 + rnd() * 4));
+    add(p.x, p.y, r, r * (0.9 + rnd() * 0.9));
+  }
+  // Giant towers standing about the canyon, well off the road
+  for (let k = 0; k < 500 && rocks.length < 1400; k++) {
+    const x = H.x0 + 40 + rnd() * (H.w - 80), y = H.y0 + 40 + rnd() * (H.h - 80), r = 9 + rnd() * rnd() * 18;
+    if (distToRoad(x, y) < W + r + 10 || trailElev(x, y) < TRAIL_ZW + 1.5) continue;
+    if (rocks.length > 60 && rnd() < 0.86) continue;
+    add(x, y, r, r * (1 + rnd() * 1.5));
+  }
+  // The water: flat strips down each channel, with the current for its ripples
+  for (const R of TRAIL_RIVERS) for (let i = 0; i < R.pts.length - 1; i++) {
+    const a = R.pts[i], b = R.pts[i + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]), dx = (b[0] - a[0]) / l, dy = (b[1] - a[1]) / l, s = Math.ceil(l / 14), w = R.w * 1.25;
+    for (let k = 0; k < s; k++) {
+      const t0 = l * k / s, t1 = l * (k + 1) / s + 1.5, nx = -dy, ny = dx, Q = (t, o) => [a[0] + dx * t + nx * o, a[1] + dy * t + ny * o, TRAIL_ZW];
+      water.push({x: a[0] + dx * (t0 + t1) / 2, y: a[1] + dy * (t0 + t1) / 2, dx, dy, w, pts: [Q(t0, -w), Q(t1, -w), Q(t1, w), Q(t0, w)]});
+    }
+  }
+  TRAIL_D = {rocks, stakes, water, grid, crossings: crossed.length};
+  return TRAIL_D;
+}
+// How deep a car can wade before water reaches its intake. A snorkel (a car's own wade figure) goes far deeper.
+const wadeOf = () => CFG.wade || (CFG.horse ? 1.4 : clamp(0.25 + (CFG.cgH || 0.5) * 0.9, 0.45, 1));
+function trailStep(dt) {
+  const D = trailData(), z = trailElev(S.x, S.y), depth = Math.max(0, TRAIL_ZW - z);
+  S.water = S.hz > depth ? 0 : depth;
+  // In the water: a bow wave and a warning, and once it is over the intake the engine drowns
+  if (depth > 0.08) {
+    if (Math.random() < 0.5) spray(S.x, S.y, S.h, Math.max(6.5, Math.abs(S.v) * 1.5));
+    const w = wadeOf();
+    if (!S.waterTold) { S.waterTold = true; sfx('knock'); log('River! Stay between the stakes: the ford is shallow, the channel beside it is not.', 'warn'); }
+    if (depth > w * 0.8 && !S.deepTold) { S.deepTold = true; log('Too deep! Water is nearly at the intake. Back out!', 'bad'); }
+    if (depth <= w * 0.5) S.deepTold = false;
+    if (depth > w && S.engineOn && !CFG.horse && !S.dead) { S.floodT = (S.floodT || 0) + dt; if (S.floodT > 0.3) { log('Water in the intake! The engine has drowned.', 'bad'); engineDies(); } } else S.floodT = 0;
+  } else S.waterTold = false;
+  // The boulders: solid. The car is two circles, nose and tail; a hit stops what is going into the rock and turns the car.
+  if (S.hz > 2) return;
+  const c = Math.cos(S.h), s = Math.sin(S.h);
+  for (const end of [1.55, -1.55]) {
+    const px = S.x + c * end, py = S.y + s * end, list = D.grid.get(Math.floor(px / 16) + ',' + Math.floor(py / 16));
+    if (!list) continue;
+    for (const R of list) {
+      const dx = px - R.x, dy = py - R.y, d = Math.hypot(dx, dy) || 0.01, over = R.r * 0.92 + 0.95 - d;
+      if (over <= 0) continue;
+      const nx = dx / d, ny = dy / d;   // the way out of the rock
+      S.x += nx * over; S.y += ny * over;
+      let vx = S.v * c - S.vy * s, vy = S.v * s + S.vy * c;
+      const vn = vx * nx + vy * ny;
+      if (vn < 0) {
+        vx -= 1.2 * vn * nx; vy -= 1.2 * vn * ny;
+        S.r += clamp(end * (nx * s - ny * c) * vn * 0.12, -1.5, 1.5);
+        if (vn < -1.5) { sfx('clunk'); damageBody(-vn * 0.5); if (vn < -7) log('Into the rocks!', 'bad'); }
+      }
+      S.v = vx * c + vy * s; S.vy = -vx * s + vy * c; S.ww = S.v;
+    }
+  }
+}
+// The Classic renderer's rocks, water and stakes
+function addTrailItems(items, dist, glS) {
+  const D = trailData(), cf = Math.cos(CAMYAW), sf = Math.sin(CAMYAW), front = (x, y, m) => (x - CAMX) * cf + (y - CAMY) * sf > -m;
+  if (glS) return;
+  for (const R of D.rocks) { const d = dist(R.x, R.y); if (d < 200 + R.r && front(R.x, R.y, R.r + 4)) items.push({d, fn: () => { for (const q of R.polys) if (q.nx === undefined || (CAMX - q.pts[0][0]) * q.nx + (CAMY - q.pts[0][1]) * q.ny > 0) polyFill(q.pts.map(p => projZ(p[0], p[1], p[2])), q.col); }}); }
+  for (const w of D.water) { const d = dist(w.x, w.y); if (d < 160 && front(w.x, w.y, 16)) items.push({d: d + 8, fn: () => polyFill(w.pts.map(p => projZ(p[0], p[1], p[2])), 'rgba(56,104,120,0.6)')}); }
+  for (const q of D.stakes) { const d = dist(q.x, q.y); if (d < 120 && front(q.x, q.y, 4)) items.push({d, fn: () => drawBox({x: q.x, y: q.y, hx: 1, hy: 0}, -0.05, 0.05, -0.05, 0.05, 0, 1.3, '#ee5a1d', '#ee5a1d', '#c94a15', null)}); }
+}
+// The same on the graphics chip: baked once, the water see-through
+function glsTrail(B) {
+  const D = trailData();
+  for (const R of D.rocks) { B.obj(R.x, R.y, R.r > 8 ? 800 : 399); for (const q of R.polys) B.poly(q.pts, q.col); }
+  for (const w of D.water) { B.obj(w.x, w.y, 399); B.poly(w.pts, [58, 108, 124], 165); }
+  for (const q of D.stakes) { B.obj(q.x, q.y, 300); B.box({x: q.x, y: q.y, hx: 1, hy: 0}, -0.05, 0.05, -0.05, 0.05, 0, 1.3, '#ee5a1d', '#ee5a1d', '#c94a15'); }
+}
+// Ripples running with the current near the camera: pale, thin and fading, drawn with the particles
+function trailRipples() {
+  const D = trailData(), t = performance.now() / 1000, L = GLC.g, f = L.f, u = L.u;
+  for (const w of D.water) {
+    const dx = w.x - CAMX, dy = w.y - CAMY;
+    if (dx * dx + dy * dy > 8100) continue;
+    for (let i = 0; i < 5; i++) {
+      const ph = (i * 2.399) % 1, o = (((i * 37) % 11) / 5.5 - 1) * w.w * 0.8, along = ((t * 1.6 + i * 3.1) % 14) - 7, nx = -w.dy, ny = w.dx;
+      const x0 = w.x + w.dx * along + nx * o, y0 = w.y + w.dy * along + ny * o;
+      if (trailElev(x0, y0) > TRAIL_ZW - 0.1 || GLC.nG > GLC_V - 7) continue;
+      const q = [[0, -0.05], [1.6, -0.05], [1.6, 0.05], [0, -0.05], [1.6, 0.05], [0, 0.05]];
+      for (const [a, b] of q) { const o2 = GLC.nG * 7; f[o2] = x0 + w.dx * a + nx * b; f[o2 + 1] = y0 + w.dy * a + ny * b; f[o2 + 2] = TRAIL_ZW + 0.03; u[o2 + 3] = (70 << 24 | 240 << 16 | 235 << 8 | 225) >>> 0; f[o2 + 4] = x0; f[o2 + 5] = y0; f[o2 + 6] = 399; GLC.nG++; }
+    }
+  }
+}
+
 /* ---------- Midnight City ---------- */
 // A street circuit at night ('night', 'nightR'): 4 km of four-lane road between lit office blocks, with concrete
 // barriers along both sides, street lamps, neon signs, a wet shine on the road, dumb two-way traffic (trafficStep) and
@@ -7444,6 +7725,7 @@ function glsBuild(snow, low) {
   }
   if (isOvalMap()) glsStadium(B, low);
   if (isNightMap()) glsNight(B, low);
+  if (isTrailMap()) glsTrail(B);
   // The towns reuse their own box drawing: drawBox and drawBoxNow hand their boxes to the builder while GLS_REC is set
   GLS_REC = B.box;
   if (MAP_KIND === 'suburb') {
@@ -7789,6 +8071,7 @@ function draw(dt) {
   if (MAP_KIND === 'suburb' && !glS) addSuburbItems(items, dist);
   if (MAP_KIND === 'city' && !glS) addCityItems(items, dist);
   if (isNightMap()) addNightItems(items, dist, glS);
+  if (isTrailMap()) addTrailItems(items, dist, glS);
   const treeFar = LOWG() ? 150 : 260, cfx = Math.cos(CAMYAW), cfy = Math.sin(CAMYAW);
   if (!glS) for (const b of S.city) {
     if ((b.cx - CAMX) * cfx + (b.cy - CAMY) * cfy < -8) continue;   // behind the camera: never on screen
@@ -7801,7 +8084,7 @@ function draw(dt) {
   }
   for (const i of CFG.lights) if (!hiddenByTerrain(ROUTE[i][0], ROUTE[i][1])) items.push({d: dist(ROUTE[i][0], ROUTE[i][1]), fn: () => drawLight(i)});
   // On WebGL the particles are recorded before the world goes in, so scenery and cars hide what is behind them
-  if (glS) { GLC.rec = true; drawBooms(); drawTyreSmoke(); drawDust(); GLC.rec = false; }
+  if (glS) { GLC.rec = true; drawBooms(); drawTyreSmoke(); drawDust(); GLC.rec = false; if (isTrailMap()) trailRipples(); }
   items.sort((a, b) => b.d - a.d);
   if (glS) glsRender(items, dt); else for (const it of items) it.fn();
   if (!glS) { drawBooms(); drawTyreSmoke(); }
@@ -8910,6 +9193,7 @@ function mapIcon(kind) {
   else if (kind === 'rally') add(RALLY_ROUTE, true);
   else if (kind === 'forest') add(FOREST_ROUTE, true);
   else if (kind === 'night') add(NIGHT_ROUTE, true);
+  else if (kind === 'trail') { add(TRAIL_ROUTE, true); for (const R of TRAIL_RIVERS) add(R.pts, false, true); }
   else if (kind === 'oval') add(OVAL_ROUTE, true);
   else if (kind === 'airfield') add(AIRFIELD_ROUTE, true);
   else if (kind === 'pass') add(PASS_ROUTE, true);
@@ -8932,7 +9216,7 @@ function mapIcon(kind) {
 document.querySelectorAll('#mapPick [data-map]').forEach(b => b.insertAdjacentHTML('afterbegin', mapIcon(b.dataset.map)));
 if (!SCORING) document.querySelectorAll('#stats .score').forEach(r => { r.style.display = 'none'; });
 function showIntro() {
-  const mapName = TT_MAP === 'night' ? 'Midnight City, with traffic' : TT_MAP === 'lot' ? 'the training lot' : TT_MAP === 'suburb' ? 'Maple Grove' : TT_MAP === 'city' ? 'downtown' : TT_MAP === 'short' ? 'the club circuit' : TT_MAP === 'plot' ? 'the parking lot' : TT_MAP === 'dirt' ? 'the dirt course' : TT_MAP === 'rally' ? 'the rally stage' : TT_MAP === 'forest' ? 'the forest stage' : TT_MAP === 'oval' ? 'the speedway' : TT_MAP === 'airfield' ? 'the airfield' : TT_MAP === 'pass' ? 'the mountain pass' : 'the circuit';
+  const mapName = TT_MAP === 'trail' ? 'Boulder Canyon, a rock trail with river fords' : TT_MAP === 'night' ? 'Midnight City, with traffic' : TT_MAP === 'lot' ? 'the training lot' : TT_MAP === 'suburb' ? 'Maple Grove' : TT_MAP === 'city' ? 'downtown' : TT_MAP === 'short' ? 'the club circuit' : TT_MAP === 'plot' ? 'the parking lot' : TT_MAP === 'dirt' ? 'the dirt course' : TT_MAP === 'rally' ? 'the rally stage' : TT_MAP === 'forest' ? 'the forest stage' : TT_MAP === 'oval' ? 'the speedway' : TT_MAP === 'airfield' ? 'the airfield' : TT_MAP === 'pass' ? 'the mountain pass' : 'the circuit';
   $('overlay').querySelector('.lbl').textContent = 'Test Track';
   showOverlay(CFG.name + ' on ' + mapName,
     `<p>Free drive: no clock, no laps and no penalties. Take it wherever you like.${S.rain ? (isPassMap() ? ' <b>It is snowing.</b>' : ' <b>It is raining.</b>') : ''}</p>${CFG.modNames.length ? '<p>Mods fitted: ' + CFG.modNames.join(', ') + '.</p>' : ''}
@@ -9562,7 +9846,7 @@ function applyCarDefaults(id, eng) {
   // The car with its engine (a swapped one if fitted). Settings only some cars have go back to their defaults first,
   // so nothing carries over from the last car.
   const C = effCar(id, eng);
-  Object.assign(CFG, {lowRange: null, lowOn: false, snowBase: null, fuel: null, abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
+  Object.assign(CFG, {lowRange: null, lowOn: false, snowBase: null, wade: null, fuel: null, abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
   CFG.engineKey = eng && ENGINES[eng] ? eng : id;
   if (!CFG.tank) CFG.tank = tankFor(id);
   CFG.redZone = C.redline;   // the tach's red zone: the factory redline, whatever the tune does to the limiter
@@ -10914,8 +11198,8 @@ function drawRaceMap(free) {
 // on the same map, against a see-through copy of that run, with the gap shown live. Timed runs need a loop map.
 let TT_LAPS = 1, TT_MODE = 'free', TT_RAIN = false, TT_TIME = 'day', GHOST = null, GHOST_RACE = false, TT_USED = null, LAST_RUN = null;
 const GHOST_DT = 0.05;
-const LOOP_MAPS = ['circuit', 'short', 'plot', 'dirt', 'rally', 'forest', 'oval', 'airfield', 'pass', 'night'];
-const MAP_NAMES = {circuit: 'Circuit', short: 'Club circuit', plot: 'Parking lot', dirt: 'Dirt course', rally: 'Rally stage', forest: 'Forest stage', oval: 'Speedway', airfield: 'Airfield', pass: 'Mountain pass', night: 'Midnight City'};
+const LOOP_MAPS = ['circuit', 'short', 'plot', 'dirt', 'rally', 'forest', 'oval', 'airfield', 'pass', 'night', 'trail'];
+const MAP_NAMES = {circuit: 'Circuit', short: 'Club circuit', plot: 'Parking lot', dirt: 'Dirt course', rally: 'Rally stage', forest: 'Forest stage', oval: 'Speedway', airfield: 'Airfield', pass: 'Mountain pass', night: 'Midnight City', trail: 'Boulder Canyon'};
 const ttRunOn = () => TT_MODE === 'street' || (TT_MODE === 'timed' && LOOP_MAPS.includes(TT_MAP));
 function ttRunEvent() {
   if (TT_MODE === 'street' && !GHOST_RACE) return {id: 'ttstreet', ttStreet: true, map: 'night', laps: TT_LAPS, prize: 0, rain: TT_RAIN ? 1 : 0, name: 'Street race',
@@ -11530,7 +11814,7 @@ for (const se of SERIES) {
 const EVENTS = SERIES.flatMap(se => se.events.map(ev => Object.assign({series: se}, ev)));
 const mapLabel = ev => (ev.rain ? (ev.map === 'pass' || ev.map === 'passR' ? 'In the snow: ' : 'In the rain: ') : '') + mapLabelDry(ev);
 const mapLabelDry = ev => ev.map === 'strip' ? (ev.dist === HALF ? 'Drag strip, a half mile' : 'Drag strip, a quarter mile')
-  : `${{circuit: 'Circuit', circuitR: 'Circuit, reversed', short: 'Club circuit', shortR: 'Club circuit, reversed', plot: 'Parking lot autocross', plotR: 'Parking lot autocross, reversed', dirt: 'Dirt scramble course', rally: 'Gravel rally stage', rallyR: 'Gravel rally stage, reversed', forest: 'Autumn forest stage', forestR: 'Autumn forest stage, reversed', oval: 'Speedway oval', ovalR: 'Speedway oval, reversed', airfield: 'Airfield circuit', pass: 'Mountain pass', passR: 'Mountain pass, reversed', night: 'Midnight City', nightR: 'Midnight City, reversed'}[ev.map]}, ${ev.laps} ${ev.laps === 1 ? 'lap' : 'laps'}`;
+  : `${{circuit: 'Circuit', circuitR: 'Circuit, reversed', short: 'Club circuit', shortR: 'Club circuit, reversed', plot: 'Parking lot autocross', plotR: 'Parking lot autocross, reversed', dirt: 'Dirt scramble course', rally: 'Gravel rally stage', rallyR: 'Gravel rally stage, reversed', forest: 'Autumn forest stage', forestR: 'Autumn forest stage, reversed', oval: 'Speedway oval', ovalR: 'Speedway oval, reversed', airfield: 'Airfield circuit', pass: 'Mountain pass', passR: 'Mountain pass, reversed', night: 'Midnight City', nightR: 'Midnight City, reversed', trail: 'Boulder Canyon rock trail'}[ev.map]}, ${ev.laps} ${ev.laps === 1 ? 'lap' : 'laps'}`;
 // Prize shares for 1st, 2nd and 3rd. A drag race is one on one, so second there is just the loser: a small consolation.
 const PAY = [1, 0.5, 0.3];
 const payFor = (ev, place) => (ev.map === 'strip' ? [1, 0.15] : PAY)[place - 1] || 0;
