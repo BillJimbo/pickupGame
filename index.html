@@ -3999,17 +3999,17 @@ function rollSpeedMul(v) {
 // amber line, then quickly up on two wheels to 30 at the red line
 function leanOf(roll) { const g = Math.abs(roll); return -Math.sign(roll) * (g <= ROLL_WARN ? g * 0.5 : 10 + (g - ROLL_WARN) * 2) * Math.PI / 180; }
 // Wheelies. S.wh is the body's angle up off its rear wheels (radians). Acceleration past the machine's CFG.wheelieA lifts the
-// nose toward an angle set by how far past it is (the rider's weight holds it there, as a spring that can overshoot), so
-// the throttle sets the height and the acceleration fading with speed, a shift, lifting off or the brake brings it down.
-// Past WH_LOOP it has gone over backward: it falls as a rollover.
-const WH_LOOP = 1.3;
+// nose against gravity, whose pull shrinks the higher it gets and is gone at WH_BALANCE. So it never settles: held wide open
+// it keeps climbing, and you hold a wheelie by feathering the throttle. Lifting off brings it down until near the balance
+// point; past that only the brake can. Past WH_LOOP it has gone over backward: it falls as a rollover.
+const WH_BALANCE = 1.05, WH_LOOP = 1.3;
 function wheelieStep(dt) {
   if (!CFG.wheelieA) return;
   S.whV = S.whV || 0; S.wh = S.wh || 0;
   if (S.aloft) S.whV *= 1 - Math.min(1, dt * 0.5);
   else {
-    const M = clamp(S.ax / CFG.wheelieA, -2, 2.5) - (S.brake || 0) * 1.5, aim = Math.max(0, M - 1) * 1.6;
-    if (S.wh > 0 || M > 1) S.whV += (13 * (aim - S.wh) - 4 * S.whV) * dt;
+    const M = clamp(S.ax / CFG.wheelieA, -2, 2.5) - (S.brake || 0) * 1.5, G = Math.cos(Math.min(S.wh, 2) * Math.PI / (2 * WH_BALANCE));
+    if (S.wh > 0 || M > 1) S.whV += (8 * (M - G) - 3 * S.whV) * dt;
   }
   S.wh += S.whV * dt;
   if (S.wh <= 0) {
