@@ -4649,7 +4649,13 @@ function drawPosed(fn, x, y, h) { const sx = S.x, sy = S.y, sh = S.h; S.x = x; S
 function setCam(dt = 0) {
   F = VH * 0.9;
   if (SHOWCASE) { showcaseCam(dt); return; }
-  const g = gradeAhead(S.x, S.y, S.h);
+  // The view tilts with the slope, but gently: the grade over the length of the car, eased and limited, so the whole
+  // picture does not leap up and down at every ledge and bump. (Tilting is only a shift of the picture, which starts to
+  // look warped at big angles.) The cockpit follows sooner than the chase camera.
+  const cg = Math.cos(S.h), sg = Math.sin(S.h), gRaw = (elev(S.x + cg * 4, S.y + sg * 4) - elev(S.x - cg * 4, S.y - sg * 4)) / 8;
+  const gAim = clamp(gRaw, -0.26, 0.26), kg = dt > 0 ? 1 - Math.exp(-dt / (VIEW === 'chase' ? 0.55 : 0.22)) : 1;
+  S.camG = S.camG === undefined ? gAim : S.camG + (gAim - S.camG) * kg;
+  const g = S.camG;
   if (VIEW === 'chase') {
     if (!camS) camS = {x: S.x, y: S.y, yaw: S.h};
     const ky = dt > 0 ? 1 - Math.exp(-dt / 0.2) : 1;     // heading catches up over about 0.2 s
@@ -4658,7 +4664,9 @@ function setCam(dt = 0) {
     const tx = S.x - Math.cos(camS.yaw) * 9, ty = S.y - Math.sin(camS.yaw) * 9;
     camS.x += (tx - camS.x) * kp; camS.y += (ty - camS.y) * kp;
     const rough = onDirt() && !S.hz ? clamp(Math.abs(S.v) / 16, 0, 1.3) : 0;   // a little bounce over rough ground
-    CAMX = camS.x; CAMY = camS.y; CAMYAW = camS.yaw; CAMZ = elev(S.x, S.y) + 3.2 + (S.hz || 0) * 0.8 + rough * (0.03 * Math.sin(S.t * 2 * Math.PI * 5.3) + 0.02 * (Math.random() - 0.5));
+    const kz = dt > 0 ? 1 - Math.exp(-dt / 0.14) : 1, gz = elev(S.x, S.y);   // (its height eases too, over a ledge)
+    camS.z = camS.z === undefined ? gz : camS.z + (gz - camS.z) * kz;
+    CAMX = camS.x; CAMY = camS.y; CAMYAW = camS.yaw; CAMZ = camS.z + 3.2 + (S.hz || 0) * 0.8 + rough * (0.03 * Math.sin(S.t * 2 * Math.PI * 5.3) + 0.02 * (Math.random() - 0.5));
     HOR = VH * 0.36 + Math.atan(g) * F;
   } else {
     camS = null;
@@ -4897,8 +4905,12 @@ function drawSky() {
   let src = ((yaw / (Math.PI * 2)) * SKY_W - sw / 2) % SKY_W;
   if (src < 0) src += SKY_W;
   const first = Math.min(sw, SKY_W - src), scale = W2 / sw;
-  ctx.drawImage(TEX, src, 0, first, SKY_H, 0, -P, first * scale, HOR + 2 + P);
-  if (first < sw) ctx.drawImage(TEX, 0, 0, sw - first, SKY_H, first * scale, -P, (sw - first) * scale, HOR + 2 + P);
+  // The panorama keeps one size, sitting on the horizon: it used to be stretched to fill the space above it, so its
+  // mountains and clouds swelled and shrank as the view tilted. Above its top, its top row carries on.
+  const skyH = VH * 0.42, sTop = HOR + 2 - skyH;
+  ctx.drawImage(TEX, src, 0, first, SKY_H, 0, sTop, first * scale, skyH);
+  if (first < sw) ctx.drawImage(TEX, 0, 0, sw - first, SKY_H, first * scale, sTop, (sw - first) * scale, skyH);
+  if (sTop > -P) { ctx.drawImage(TEX, src, 0, first, 1, 0, -P, first * scale, sTop + P + 1); if (first < sw) ctx.drawImage(TEX, 0, 0, sw - first, 1, first * scale, -P, (sw - first) * scale, sTop + P + 1); }
   if (P) ctx.translate(P, 0);
   ctx.fillStyle = !SHOWCASE && isTrailMap() ? '#8f6a48' : !SHOWCASE && isNightMap() ? '#0d0e14' : !SHOWCASE && isPassMap() ? '#5d6450' : '#3f5b2c'; ctx.fillRect(-P, HOR, W2, VH - HOR + P);
   if (S.rain && !SHOWCASE) { ctx.fillStyle = isNightMap() ? `rgba(12,13,22,${0.7 * S.rain})` : snowing() ? `rgba(198,204,212,${0.86 * S.rain})` : `rgba(104,112,122,${0.82 * S.rain})`; ctx.fillRect(-P, -P, W2, HOR + 2 + P); }   // overcast (pale with snow)
@@ -5540,11 +5552,12 @@ let BODY_PITCH = 0, CUR_PITCH = 0;   // the player's body pitch while its model 
 function drawBoxNow(cp, u0, u1, v0, v1, z0, z1, side, top, end, lamps) {
   if (GLC.rec) return glcBox(cp, u0, u1, v0, v1, z0, z1, side, top, end);   // (on the graphics chip: see GLC)
   const rx = -cp.hy, ry = cp.hx, pt = CUR_PITCH;
-  const R = RIGID, P = R ? (u, v, z) => projZ(cp.x + cp.hx * u + rx * v, cp.y + cp.hy * u + ry * v, R.base + u * R.gu + v * R.gv + z + u * pt + LIFT)
+  const R = RIGID, P = R ? (u, v, z) => { const q = rigidPt(R, u, v, z, pt); return projZ(q[0], q[1], q[2]); }
     : (u, v, z) => proj(cp.x + cp.hx * u + rx * v, cp.y + cp.hy * u + ry * v, z + u * pt + LIFT);
-  const cu = (CAMX - cp.x) * cp.hx + (CAMY - cp.y) * cp.hy;
-  const cv = (CAMX - cp.x) * rx + (CAMY - cp.y) * ry;
-  const camZ = CAMZ - elev(cp.x, cp.y);
+  const ex = CAMX - cp.x, ey = CAMY - cp.y, ez = CAMZ - (R ? R.oz : elev(cp.x, cp.y));
+  const cu = R ? ex * R.fx + ey * R.fy + ez * R.fz : ex * cp.hx + ey * cp.hy;
+  const cv = R ? ex * R.rx + ey * R.ry + ez * R.rz : ex * rx + ey * ry;
+  const camZ = R ? ex * R.ux + ey * R.uy + ez * R.uz : ez;
   const quad = (a, b, c, d, col) => seamFill([P(...a), P(...b), P(...c), P(...d)], NIGHT_K !== null ? nightTint(col, NIGHT_K) : col);
   const dot = (u, v, z, col) => {
     const p = P(u, v, z);
@@ -5771,15 +5784,24 @@ function drawShapeModelRaw(car) {
   if (plan) drawDamagePatches(cp, plan);
 }
 // Any car's model, by its body
-// A vehicle is rigid: while it is drawn, every part hangs off one flat plane resting on the ground under its wheels (the
-// height at each axle sets the pitch, at each side the roll), rather than each corner following the ground beneath it,
-// which stretched and bent the body over any change of slope. RIGID is read by glcBox, drawBoxNow and drawCarLights.
+// A vehicle is rigid: while it is drawn, its parts are placed in one frame, rotated to rest on the ground under its wheels
+// (the height at each axle sets the pitch, at each side the roll): forward, right and up axes square to each other, so
+// its uprights lean with the body and nothing stretches. Read by glcBox, drawBoxNow and drawCarLights through rigidPt.
 let RIGID = null;
 function rigidPlane(b) {
   const C = CARS[b] || {}, sh = C.shape || C.sideShape, ax = sh && sh.axles, uF = ax ? Math.max(...ax) : 1.3, uR = ax ? Math.min(...ax) : -1.3, tr = (sh && sh.track) || 0.8;
   const c = Math.cos(S.h), s = Math.sin(S.h), g = (u, v) => elev(S.x + c * u - s * v, S.y + s * u + c * v);
-  const ef = g(uF, 0), er = g(uR, 0), gu = (ef - er) / (uF - uR);
-  return {base: er - uR * gu, gu, gv: (g(0, tr) - g(0, -tr)) / (2 * tr)};
+  const ef = g(uF, 0), er = g(uR, 0), gu = (ef - er) / (uF - uR), gv = (g(0, tr) - g(0, -tr)) / (2 * tr);
+  // Forward along the slope; right square to it, along the side slope; up square to both
+  const fl = Math.hypot(1, gu), fx = c / fl, fy = s / fl, fz = gu / fl, d = -s * fx + c * fy + gv * fz;
+  let rx = -s - d * fx, ry = c - d * fy, rz = gv - d * fz; const rl = Math.hypot(rx, ry, rz); rx /= rl; ry /= rl; rz /= rl;
+  return {ox: S.x, oy: S.y, oz: er - uR * gu, fx, fy, fz, rx, ry, rz, ux: fy * rz - fz * ry, uy: fz * rx - fx * rz, uz: fx * ry - fy * rx};
+}
+// A point on the vehicle (forward, right, up from its center on the ground) in the world, with the body's own pitch on its
+// springs as a small rotation (so that too stays rigid)
+function rigidPt(R, u, v, z, pt = 0) {
+  const U = u - z * pt, Z = z + u * pt;
+  return [R.ox + R.fx * U + R.rx * v + R.ux * Z, R.oy + R.fy * U + R.ry * v + R.uy * Z, R.oz + R.fz * U + R.rz * v + R.uz * Z + LIFT];
 }
 function drawModelOf(b) {
   const night = isNightMap() && !SHOWCASE;
@@ -6223,6 +6245,7 @@ function drawTerrain() {
 // stalls, and kept until there are too many. If WebGL is missing or fails, the classic ray march draws the ground.
 const GLT = {ok: null, gl: null, cv: null, prog: null, tiles: new Map(), key: '', idx: null, pad: 0, w: 0, h: 0, frame: 0};
 const GLT_T = 64, GLT_G = 32, GLT_N = 128, GLT_FAR = 240;
+const glFar = () => isTrailMap() ? 460 : GLT_FAR;   // (Boulder Canyon sees much further: its hills were cut off short against the sky)
 function glInit() {
   try {
     const c = document.createElement('canvas');
@@ -6330,13 +6353,13 @@ function glTerrain() {
   const c = Math.cos(CAMYAW), s = Math.sin(CAMYAW), SD = SHOWCASE ? SUN_DIR_SUNSET : SUN_DIR_DAY;
   gl.uniform3f(L.cam, CAMX, CAMY, CAMZ); gl.uniform2f(L.cs, c, s); gl.uniform1f(L.F, F);
   gl.uniform2f(L.ctr, P + VW / 2, P + HOR); gl.uniform2f(L.size, Wc, Hc);
-  gl.uniform3f(L.sun, SD[0], SD[1], SD[2]); gl.uniform1f(L.far, GLT_FAR);
+  gl.uniform3f(L.sun, SD[0], SD[1], SD[2]); gl.uniform1f(L.far, glFar());
   gl.uniform1f(L.wet, S.rain && !SHOWCASE && !flags.snow ? 1 - 0.28 * S.rain : 1);
   gl.uniform1i(L.tex, 0); gl.activeTexture(gl.TEXTURE0);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, GLT.ib);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv);
   // The tiles in view: within reach and not behind the camera, nearest first (so baking goes where it matters)
-  const T = GLT_T, R = GLT_FAR + T, tx0 = Math.floor((CAMX - R) / T), tx1 = Math.floor((CAMX + R) / T), ty0 = Math.floor((CAMY - R) / T), ty1 = Math.floor((CAMY + R) / T);
+  const T = GLT_T, R = glFar() + T, tx0 = Math.floor((CAMX - R) / T), tx1 = Math.floor((CAMX + R) / T), ty0 = Math.floor((CAMY - R) / T), ty1 = Math.floor((CAMY + R) / T);
   const want = [];
   for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
     const cx = (tx + 0.5) * T - CAMX, cy = (ty + 0.5) * T - CAMY, d = Math.hypot(cx, cy);
@@ -7037,7 +7060,7 @@ function lampSpots(b) {
 // The lamps of the car being drawn (posed in S): headlights toward you, tail lights from behind, brightening under braking
 function drawCarLights(b) {
   const s = lampSpots(b), c = Math.cos(S.h), sn = Math.sin(S.h), o = NIGHT_CAR || {}, dx = CAMX - S.x, dy = CAMY - S.y, d = Math.hypot(dx, dy) || 1, cs = (dx * c + dy * sn) / d;
-  const R = RIGID, at = (u, v) => { const x = S.x + c * u - sn * v, y = S.y + sn * u + c * v; return [x, y, R ? R.base + u * R.gu + v * R.gv - elev(x, y) : 0]; };   // (the third: the plane's height over the ground there)
+  const R = RIGID, at = (u, v) => { if (!R) return [S.x + c * u - sn * v, S.y + sn * u + c * v, 0]; const q = rigidPt(R, u, v, s.z); return [q[0], q[1], q[2] - elev(q[0], q[1]) - s.z]; };   // (the third: how far the body's frame puts it from the ground's height)
   const prev = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'lighter';
   for (const v of s.v < 0.1 ? [0] : [-s.v, s.v]) {
     if (cs > -0.15) { const q = at(s.fr, v); drawGlow(q[0], q[1], s.z + q[2], 0.35 + 1.2 * Math.max(0, cs), 255, 236, 190, 0.45 + 0.55 * Math.max(0, cs)); }
@@ -7445,11 +7468,15 @@ function glcItem(items, d, x, y, fn, reach = 399) {
   GLC.rec = false; GLC.reach = 399; GLC.ds.push(reach > 400 ? d + 1e6 : d);   // (as with scenery: over 400 m of reach sorts first)
 }
 function glcBox(cp, u0, u1, v0, v1, z0, z1, side, top, end) {
-  const rx = -cp.hy, ry = cp.hx, pt = CUR_PITCH, cu = (CAMX - cp.x) * cp.hx + (CAMY - cp.y) * cp.hy, cv = (CAMX - cp.x) * rx + (CAMY - cp.y) * ry, camZ = CAMZ - elev(cp.x, cp.y);
-  const R = RIGID, alpha = Math.round(ctx.globalAlpha * 255), L = alpha < 255 ? GLC.t : GLC.o, f = L.f, u = L.u, k = 1 - GLC.seq++ * 1.5e-5, cx = GLC.cx, cy = GLC.cy;
+  const R = RIGID, rx = -cp.hy, ry = cp.hx, pt = CUR_PITCH, ex = CAMX - (R ? R.ox : cp.x), ey = CAMY - (R ? R.oy : cp.y), ez = CAMZ - (R ? R.oz : elev(cp.x, cp.y));
+  // (which faces turn toward the eye, measured in the vehicle's own frame)
+  const cu = R ? ex * R.fx + ey * R.fy + ez * R.fz : ex * cp.hx + ey * cp.hy, cv = R ? ex * R.rx + ey * R.ry + ez * R.rz : ex * rx + ey * ry, camZ = R ? ex * R.ux + ey * R.uy + ez * R.uz : ez;
+  const alpha = Math.round(ctx.globalAlpha * 255), L = alpha < 255 ? GLC.t : GLC.o, f = L.f, u = L.u, k = 1 - GLC.seq++ * 1.5e-5, cx = GLC.cx, cy = GLC.cy;
   let n = alpha < 255 ? GLC.nT : GLC.n;
   const put = (U, V, Z, c) => {
-    const x = cp.x + cp.hx * U + rx * V, y = cp.y + cp.hy * U + ry * V, z = (R ? R.base + U * R.gu + V * R.gv : elev(x, y)) + Z + U * pt + LIFT, o = n * 7;
+    let x, y, z;
+    if (R) [x, y, z] = rigidPt(R, U, V, Z, pt); else { x = cp.x + cp.hx * U + rx * V; y = cp.y + cp.hy * U + ry * V; z = elev(x, y) + Z + U * pt + LIFT; }
+    const o = n * 7;
     f[o] = CAMX + (x - CAMX) * k; f[o + 1] = CAMY + (y - CAMY) * k; f[o + 2] = CAMZ + (z - CAMZ) * k; u[o + 3] = c; f[o + 4] = cx; f[o + 5] = cy; f[o + 6] = GLC.reach; n++;
   };
   const quad = (a, b, c, d, col) => {
