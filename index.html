@@ -4045,6 +4045,12 @@ function drawRollGauge() {
   ctx.font = `700 ${Math.round(r * 0.26)}px "Barlow Condensed", Impact, sans-serif`;
   ctx.fillText(`${Math.round(Math.abs(roll))}°${Math.abs(roll) >= 1 ? (roll > 0 ? ' L' : ' R') : ''}`, cx, cy + r * 0.82);
   ctx.font = `${Math.round(r * 0.14)}px "IBM Plex Mono", monospace`; ctx.fillStyle = '#8c8170'; ctx.fillText('ROLL', cx, cy - r * 0.42);
+  if (S.tip && S.tip.phase === 'rise') {   // lying there: how to stand it up, and how far along it is
+    const w = r * 2.6, y = cy + r * 1.3, h = r * 0.14;
+    ctx.fillStyle = '#f2eee4'; ctx.font = `700 ${Math.round(r * 0.28)}px "Barlow Condensed", Impact, sans-serif`; ctx.fillText(`HOLD ${keyLabel('crank')} TO STAND IT UP`, cx, y);
+    ctx.fillStyle = 'rgba(12,12,12,0.8)'; ctx.fillRect(cx - w / 2, y + r * 0.2, w, h);
+    ctx.fillStyle = '#ffb02e'; ctx.fillRect(cx - w / 2, y + r * 0.2, w * S.tip.p, h);
+  }
   ctx.restore();
 }
 // A real rollover: the machine seen end-on is a rigid outline (every part's corners and the wheels, rider included) with its
@@ -4108,10 +4114,9 @@ function tipStep(dt) {
     if (T.phase === 'rest' && T.t > 0.6) {
       T.phase = 'rise'; T.t = 0; T.p = 0; T.tell = 0; T.from = T.a; T.to = Math.round(T.a / (2 * Math.PI)) * 2 * Math.PI;
       T.dur = clamp(1.5 + Math.abs(T.to - T.from) / 0.4, 2.5, 7);
-      if (Math.abs(T.to - T.from) < 0.2) T.p = 1;   // it came to rest on its wheels: nothing to lift
     }
     if (T.phase === 'rise') {   // hold the start key to heave it up; let go and it sinks back to where it lay
-      const held = KEYS.KeyI || KEYS.Enter || T.p >= 1;
+      const held = KEYS.KeyI || KEYS.Enter;
       T.p = clamp(T.p + (held ? dt / T.dur : -dt / (T.dur * 0.5)), 0, 1);
       T.tell -= dt; if (!held && T.p === 0 && T.tell <= 0) { T.tell = 6; log('Hold {k:crank} to stand it back up.', 'bad'); }
       const k = T.p; T.a = T.from + (T.to - T.from) * k * k * (3 - 2 * k);
