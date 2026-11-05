@@ -4050,7 +4050,7 @@ function drawRollGauge() {
 // A real rollover: the machine seen end-on is a rigid outline (every part's corners and the wheels, rider included) with its
 // weight at cg, and it flies, bounces and rolls on that outline under gravity. The tires let go, so as the heading keeps
 // turning the machine slides sideways, and the ground's friction at the contact point is what spins it over, more of it the
-// faster it was going; that friction also slows it down. Once still it rests a moment, then slowly stands back up, turning on
+// faster it was going; that friction also slows it down. Once still it stays down until you hold the start key, which slowly stands it up (let go and it sinks back), turning on
 // its outline so nothing sinks into the ground. S.tip holds the state; the body's frame reads S.sb.tilt, tv and dz (rigidPlane).
 function tipHull() {
   const sh = CARS[CFG.body].shape, w = sh.track + sh.tw, d = (CFG.r || 0.3) * 2, pts = [[-w, 0], [w, 0], [-w, d], [w, d]];
@@ -4105,12 +4105,17 @@ function tipStep(dt) {
     if (T.still > 0.3 || T.t > 7) { T.phase = 'rest'; T.t = 0; }
   } else {
     S.v = S.vy = S.r = 0;
-    if (T.phase === 'rest' && T.t > 0.9) {
-      T.phase = 'rise'; T.t = 0; T.from = T.a; T.to = Math.round(T.a / (2 * Math.PI)) * 2 * Math.PI;
+    if (T.phase === 'rest' && T.t > 0.6) {
+      T.phase = 'rise'; T.t = 0; T.p = 0; T.tell = 0; T.from = T.a; T.to = Math.round(T.a / (2 * Math.PI)) * 2 * Math.PI;
       T.dur = clamp(1.5 + Math.abs(T.to - T.from) / 0.4, 2.5, 7);
-      log('Standing it back up...', 'warn');
+      if (Math.abs(T.to - T.from) < 0.2) T.p = 1;   // it came to rest on its wheels: nothing to lift
     }
-    if (T.phase === 'rise') { const k = clamp(T.t / T.dur, 0, 1); T.a = T.from + (T.to - T.from) * k * k * (3 - 2 * k); }
+    if (T.phase === 'rise') {   // hold the start key to heave it up; let go and it sinks back to where it lay
+      const held = KEYS.KeyI || KEYS.Enter || T.p >= 1;
+      T.p = clamp(T.p + (held ? dt / T.dur : -dt / (T.dur * 0.5)), 0, 1);
+      T.tell -= dt; if (!held && T.p === 0 && T.tell <= 0) { T.tell = 6; log('Hold {k:crank} to stand it back up.', 'bad'); }
+      const k = T.p; T.a = T.from + (T.to - T.from) * k * k * (3 - 2 * k);
+    }
     T.h = tipRest(T); T.vz = 0;
   }
   S.ww = S.v;
@@ -4118,10 +4123,10 @@ function tipStep(dt) {
   const B = S.sb;
   B.tilt = T.a; B.tv = -T.cg * Math.sin(T.a); B.dz = gz + T.h - T.cg * Math.cos(T.a) - B.oz;
   S.roll = -wrapA(T.a) * 180 / Math.PI;   // (the inclinometer follows it round)
-  if (T.phase === 'rise' && T.t >= T.dur) {
+  if (T.phase === 'rise' && T.p >= 1) {
     S.tip = null; S.roll = 0; S.rollV = 0; B.tilt = 0; B.tv = 0; B.dz = 0; B.zv -= 0.5; sfx('clunk');
     if (S.tipCam) { VIEW = 'cockpit'; camS = null; }
-    log('Back on its wheels. It is in neutral: start it with {k:crank}.', 'ok');
+    log('Back on its wheels. It is in neutral: press {k:crank} to start it.', 'ok');
   }
 }
 // Air time and suspension. The ground is only a height under the car, so leaving it is a matter of looking ahead: if a tenth
@@ -5982,7 +5987,7 @@ function rigidPlane(b) {
   let rx = -s - d * fx, ry = c - d * fy, rz = gv - d * fz; const rl = Math.hypot(rx, ry, rz); rx /= rl; ry /= rl; rz /= rl;
   let ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx, ox = S.x, oy = S.y, oz = oz0, tb = tv[0], td = tv[1], under = false;
   if (P.tilt) {   // rolled about its length (a three-wheeler leaning or going over): any angle, all the way round. The wheels stop following the ground.
-    const A = P.tilt, ca = Math.cos(A), sa = Math.sin(A), t = P.tv || 0, k = clamp((0.52 - Math.abs(A)) / 0.35, 0, 1);
+    const A = P.tilt, ca = Math.cos(A), sa = Math.sin(A), t = P.tv || 0, k = clamp((0.16 - Math.abs(A)) / 0.12, 0, 1);   // (past a few degrees the inside wheel leaves the ground with the body)
     ox += rx * t; oy += ry * t; oz += P.dz || 0; tb *= k; td *= k; under = Math.abs(A) > 0.35;
     const r2 = [ca * rx - sa * ux, ca * ry - sa * uy, ca * rz - sa * uz], u2 = [sa * rx + ca * ux, sa * ry + ca * uy, sa * rz + ca * uz];
     [rx, ry, rz] = r2; [ux, uy, uz] = u2;
