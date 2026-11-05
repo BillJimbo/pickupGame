@@ -4023,15 +4023,18 @@ function wheelieStep(dt) {
     if (S.tip) { S.tip.w *= 2.5; log('Looped it!', 'bad'); }
   }
 }
-// Cars don't really wheelie, but very powerful ones get a drag launch here: the front wheels come up a little under hard
-// acceleration, never past CAR_LIFT_MAX (15 degrees), so a car can never go over. Rear-biased drive only, and only over a
-// power-to-weight line (350 hp a tonne; 190 for a diesel's torque), counting a nitrous shot while it sprays. S.wh again.
+// Cars: only the real recipe lifts a car's front wheels. An older rear-drive car (soft springs, a live axle: built before
+// 1985), modified well past its stock power (or on the bottle), on tires that hold the launch. The acceleration it takes
+// comes from the weight on the front (carLiftA), about 0.64 g at 50/50 (just under what slicks hold in this game, so it takes big power and the tires both), so tail-heavy cars lift first; a modern car stays down
+// however fast it is. A launch only, fading by about 60 mph, never past CAR_LIFT_MAX (15 degrees), so it cannot go over.
 const CAR_LIFT_MAX = 0.26;
+const carLiftA = () => 9.81 * 1.28 * (CFG.b / CFG.wb);
 function carLiftStep(dt) {
-  if (CFG.trikeTips || CFG.horse || CFG.drive === 'front' || !S.sb) return;
-  if (CFG.drive === 'awd' && (CFG.awdFront ?? 0.35) > 0.6) return;
-  const line = CFG.diesel ? 190 : 350, pw = ((CFG.hpEst || 0) + (S.nos ? CFG.nosHp || 0 : 0)) / (CFG.mass / 1000);
-  const aim = pw < line || S.aloft || S.v < 0 ? 0 : CAR_LIFT_MAX * clamp((S.ax - 4.5) / 5, 0, 1) * clamp(0.4 + (pw - line) / line * 1.2, 0, 1) * clamp(1 - (S.v - 10) / 16, 0, 1);   // (a launch: gone by about 60 mph)
+  if (CFG.trikeTips || CFG.horse || CFG.electric || CFG.drive !== 'rear' || !S.sb) return;
+  const C = CARS[CFG.body];
+  if (!C || !(C.year < 1985)) return;
+  const made = ((CFG.hpEst || 0) + (S.nos ? CFG.nosHp || 0 : 0)) / Math.max(1, parseFloat(C.hp) || CFG.hpEst || 1);   // (how far past stock)
+  const aim = made < 1.4 || S.aloft || S.v < 0 ? 0 : CAR_LIFT_MAX * clamp((S.ax - carLiftA()) / 1.5, 0, 1) * clamp(1 - (S.v - 10) / 16, 0, 1);
   if (!aim && !S.wh) return;
   S.wh = S.wh || 0; S.whV = S.whV || 0;
   S.whV += (40 * (aim - S.wh) - 9 * S.whV) * dt; S.wh += S.whV * dt;
