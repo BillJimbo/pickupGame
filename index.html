@@ -380,6 +380,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
     <div class="lbl" id="rpm" style="margin-top:4px">0 rpm</div>
     <div class="lbl" style="margin-top:4px">Gear</div>
     <div class="big" id="gear">N</div>
+    <div id="loLamp" hidden style="font:700 11px 'IBM Plex Mono',monospace;color:#fff;background:#2f9e5a;border-radius:3px;padding:1px 5px;width:max-content;margin:2px auto 0">4LO</div>
     <svg id="tracLamp" viewBox="-12 -12 24 31" width="26" height="30" style="display:none" aria-label="Traction control or ABS working"><path d="M-9 1L-7-6Q0-9 7-6L9 1V5H-9Z" fill="#ff8a1a"/><rect x="-9" y="5" width="4" height="3" fill="#ff8a1a"/><rect x="5" y="5" width="4" height="3" fill="#ff8a1a"/><rect x="-5.5" y="-5" width="11" height="3.5" fill="#1a1208"/><path d="M-8 10C-4 12-9 14-5 17M4 10C8 12 3 14 7 17" stroke="#ff8a1a" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
   </div>
 </div>
@@ -1520,6 +1521,50 @@ Object.assign(CARS, {
   }),
   // The 1977 Ford F-150 Stepside (Flareside): the 351M V8 on a two-barrel carb, the NP435 four-speed with its granny
   // first gear, a short narrow bed with the rear fenders standing outside it and a step behind the cab
+  // A 1990 Toyota Pickup 4x4, fully built for the rough stuff around its 22R-E: the fuel-injected 2.4 with a cam, a header
+  // and a tune (116 hp stock). 33-inch mud tires, a long-travel lift, 4.88 axles behind the W56 five-speed, and a transfer
+  // case with a 2.28 low range on the special-ability key (CFG.lowRange). Tube bumpers, a winch, skid plate, rock sliders,
+  // snorkel, light bar, roll bar, spare and jerry cans in the bed. The tires squirm on pavement and keep nearly all their
+  // grip off it. Its engine can go in the stock pickup; nothing replaces it here (no SWAPS entry).
+  pickup4x4: rosterCar('pickup4x4', {
+    short: 'Pickup 4x4 (built)', year: 1990, drive: 'awd', awdFront: 0.5, mass: 1720, r: 0.42, fd: 4.88, gears: [3.954, 2.141, 1.384, 1.0, 0.85], rev: 4.22, lowRange: 2.28,
+    hp: 135, hpRpm: 4800, peakTq: 215, tqPeak: 3200, idle: 750, redline: 5200, gaugeMax: 7000, wb: 2.8, front: 0.54, cyl: 4, inertia: 3, lowFrac: 0.78, idleTq: 0.38,
+    grip: [0.66, 0.82], eyeH: 2.05, eyeHor: 0.47, paint: '#a8362a', cgH: 0.95, dragMul: 1.75, offGrip: 0.98, offDrag: 0.3, snowBase: 0.72, wetGrip: 0.75,
+    engine: '22R-E 2.4 fuel-injected, built: 135 hp at 4,800 rpm, 215 Nm at 3,200 rpm (116 hp stock)', note: '33s, long travel, 4.88s and low range. Press {k:h} to shift the transfer case, stopped or with the clutch in',
+    blurb: 'A 1990 Toyota Pickup 4x4 with the fuel-injected 22R-E and everything bolted to it: long-travel lift, 33s, a winch, a snorkel and a light bar. Press {k:h} for low range. Slow on the road and unstoppable off it.',
+    shape: (() => {
+      const L = 0.46, F = (k, u0, u1, hw, z0, z1) => full(k, u0, u1, hw, z0 + L, z1 + L), Y = (k, u0, u1, a, b, z0, z1) => sym(k, u0, u1, a, b, z0 + L, z1 + L);
+      return {track: 0.86, tw: 0.17, axles: [-1.45, 1.35], parts: parts(
+        // The running gear, in plain view under the lift: axles and diffs, a driveshaft, leaf packs and red shocks
+        full('k', 1.28, 1.42, 0.86, 0.36, 0.48), full('c', 1.22, 1.48, 0.17, 0.3, 0.54), full('k', -1.52, -1.38, 0.86, 0.36, 0.48), full('c', -1.58, -1.32, 0.17, 0.3, 0.54),
+        full('k', -1.38, 1.28, 0.05, 0.42, 0.5), sym('k', 0.8, 1.95, 0.5, 0.58, 0.5, 0.58), sym('k', -2.1, -0.8, 0.5, 0.58, 0.5, 0.6),
+        sym('tl', 1.3, 1.38, 0.62, 0.68, 0.48, 0.96), sym('tl', -1.5, -1.42, 0.62, 0.68, 0.48, 0.96),
+        full('k', 1.3, 1.92, 0.5, 0.74, 0.92), full('k', -2.2, 1.0, 0.45, 0.74, 0.92),                                 // the frame
+        full('c', 0.7, 2.04, 0.5, 0.68, 0.74),                                                                         // the skid plate
+        sym('c', 1.17, 1.53, 1.03, 1.05, 0.24, 0.6), sym('c', -1.63, -1.27, 1.03, 1.05, 0.24, 0.6),                       // steel wheels, on the tires' outer faces
+        // The stock cab and bed, lifted
+        F('p', 0.95, 1.6, 0.83, 0.46, 0.98), F('p', 1.6, 2.04, 0.5, 0.46, 0.98), Y('p', 1.6, 2.04, 0.5, 0.83, 0.46, 0.98), F('p', 0.95, 2.02, 0.79, 0.98, 1.0),
+        F('k', 2.04, 2.13, 0.5, 0.6, 0.92), Y('hl', 2.04, 2.13, 0.52, 0.8, 0.66, 0.88), Y('hlt', 2.04, 2.13, 0.52, 0.8, 0.58, 0.64),
+        F('p', -0.35, 0.95, 0.83, 0.46, 1.08), F('g', 0.75, 1.0, 0.79, 1.08, 1.3), F('g', -0.3, 0.75, 0.79, 1.08, 1.5),
+        Y('p', 0.7, 0.8, 0.79, 0.82, 1.08, 1.5), Y('p', -0.35, -0.22, 0.79, 0.82, 1.08, 1.5), F('r', -0.35, 0.75, 0.8, 1.5, 1.56), Y('k', 0.78, 0.9, 0.83, 0.97, 1.1, 1.24),
+        F('bf', -2.3, -0.4, 0.83, 0.46, 0.75), Y('p', -2.3, -0.4, 0.73, 0.83, 0.75, 1.06), F('p', -0.48, -0.4, 0.73, 0.75, 1.06), F('p', -2.3, -2.22, 0.73, 0.75, 1.06),
+        Y('k', -2.3, -0.4, 0.73, 0.84, 1.06, 1.08), Y('tl', -2.33, -2.29, 0.6, 0.83, 0.7, 0.98),
+        // Fender flares over the 33s, and rock sliders under the cab
+        Y('k', 0.88, 1.82, 0.83, 1.06, 0.46, 0.56), Y('k', -1.92, -0.98, 0.83, 1.06, 0.46, 0.56), Y('k', -0.35, 0.85, 0.8, 0.92, 0.36, 0.46),
+        // The front tube bumper and winch, with a hoop over the grille; the rear bumper with a hitch
+        F('k', 2.1, 2.24, 0.9, 0.34, 0.46), Y('k', 2.16, 2.24, 0.58, 0.66, 0.46, 0.98), F('k', 2.16, 2.24, 0.66, 0.92, 1.0), F('c', 2.13, 2.32, 0.3, 0.44, 0.62), F('k', 2.32, 2.36, 0.1, 0.48, 0.56),
+        F('k', -2.48, -2.3, 0.88, 0.34, 0.48), F('c', -2.62, -2.48, 0.05, 0.36, 0.44),
+        // The snorkel up the right-hand pillar
+        [['k', 0.96, 1.06, 0.84, 0.92, 0.9 + L, 1.58 + L], ['k', 0.9, 1.12, 0.82, 0.94, 1.58 + L, 1.66 + L]],
+        // A roof rack with a light bar and its pods
+        F('k', -0.25, 0.65, 0.74, 1.57, 1.59), F('k', 0.62, 0.78, 0.74, 1.6, 1.72), Y('hl', 0.76, 0.8, 0.1, 0.34, 1.62, 1.7), Y('hl', 0.76, 0.8, 0.42, 0.66, 1.62, 1.7),
+        // The roll bar in the bed, a spare standing against it and a pair of jerry cans
+        Y('k', -0.62, -0.52, 0.66, 0.74, 1.06, 1.72), F('k', -0.62, -0.52, 0.74, 1.66, 1.74), Y('k', -1.9, -0.6, 0.66, 0.72, 1.64, 1.7),
+        full('k', -1.5, -0.74, 0.17, 0.78 + L, 1.56 + L), full('c', -1.28, -0.96, 0.18, 1.02 + L, 1.32 + L),
+        Y('gn', -2.18, -1.86, 0.42, 0.66, 0.75, 1.15))};
+    })(),
+    ix: {dash: '#232220', trim: '#34302c', hoodY: 0.64, wheel: 3, cluster: 'box'}
+  }),
   f15077: rosterCar('f15077', {
     fuel: 'carb',   // carbureted: no rev limiter
     short: 'F-150 Stepside', year: 1977, drive: 'rear', mass: 1950, r: 0.38, fd: 3.5, gears: [6.69, 3.34, 1.66, 1.0], rev: 8.26, gate: 'p4',
@@ -1853,7 +1898,7 @@ const ENGINE_FIELDS = {hp: 0, peakTq: 0, tqPeak: 0, curve: null, idle: 800, redl
   inertia: 3, idleTq: 0.2, stockTurbo: false, boostPsi: 0, spoolLo: 2500, spoolHi: 4000, offBoost: null, twinTurbo: false, bovStock: false, diesel: false, cam: null, hybrid: null, electric: false, battery: null, eAxle: null, aircooled: false,
   fdMul: 1, overRev: null, fuel: null, eff: null};   // eff: thermal efficiency for fuel use, if not the usual for its fuel   // fuel: 'carb' or 'mech' for engines with no ECU (their tuning is carb or injection tuning)   // fdMul: an engine swap that comes with its own gearing (the ATC's V-twin); overRev: the ATC single's toughness
 const ENGINE_INFO = {
-  pickup: ['22R 2.4 carb', 150], celica: ['4A-FE 1.6', 120], ram: ['6.7 Cummins turbodiesel', 500], ae86: ['4A-GE 1.6 twin cam', 125],
+  pickup: ['22R 2.4 carb', 150], pickup4x4: ['22R-E 2.4 injected (built)', 155], celica: ['4A-FE 1.6', 120], ram: ['6.7 Cummins turbodiesel', 500], ae86: ['4A-GE 1.6 twin cam', 125],
   civic88: ['D16A6 1.6', 110], miata90: ['B6ZE 1.6', 115], s13: ['KA24E 2.4', 160], fox87: ['Ford 5.0 V8', 210], camaro86: ['Chevy 5.0 V8', 230],
   gti84: ['VW 1.8 eight valve', 120], cabrio90: ['VW 1.8 eight valve', 120], cabrio01: ['VW 2.0 eight valve', 135], greta: ['VW 2.0 eight valve, tuned', 135], fc88: ['13B turbo rotary', 140], mr291: ['3S-GTE 2.0 turbo', 160],
   supra3: ['7M-GTE 3.0 turbo six', 230], gn87: ['Buick 3.8 turbo V6', 200], z3290: ['VG30DETT 3.0 twin turbo V6', 240], r32: ['RB26DETT 2.6 twin turbo six', 270],
@@ -1926,7 +1971,7 @@ Object.assign(ENGINES, {
 // What fits where: family swaps (the 2JZ into the A70, the RB26 into an S13, the 13B-REW into an FC), the TDI into the
 // Volkswagens, and some fun ones (an LS in a Miata, a Cummins in the pickup, the Viper V10 in the Ram, as the SRT-10 had)
 const SWAPS = {
-  pickup: ['supra4', 'supra3', 'ls1', 'ram'], celica: ['ae86', 'mr291', 'supra4'], ram: ['viper96'],
+  pickup: ['pickup4x4', 'supra4', 'supra3', 'ls1', 'ram'], celica: ['ae86', 'mr291', 'supra4'], ram: ['viper96'],
   ae86: ['celica', 'mr291', 'k20', 'supra4', 'ls1'], civic88: ['k20'], miata90: ['ls1', 'k20', 'fd93'],
   s13: ['r32', 'supra4', 'ls1', 'fd93'], fox87: ['ls1'], camaro86: ['ls1'], gti84: ['cabrio01', 'rabbitpu', 'tdi', 'k20'], cabrio90: ['cabrio01', 'rabbitpu', 'tdi'],
   cabrio01: ['tdi', 'k20'],
@@ -1948,13 +1993,13 @@ SWAPS.camaro86.push('vette6'); SWAPS.fox87.push('vette6'); SWAPS.s13.push('vette
 // into (the 2JZ and the RB26 carry a legend premium). Labor depends on how hard the job is: a swap within the same
 // maker family is straightforward, a cross-brand swap needs mounts, wiring and a custom tune, and putting a diesel into
 // a gas car means a whole fuel system. Higher-tier cars take a little longer to work on.
-const ENGINE_COST = {pickup: 900, celica: 600, ram: 11000, ae86: 1500, civic88: 700, miata90: 900, s13: 1000, fox87: 2500, camaro86: 2000,
+const ENGINE_COST = {pickup: 900, pickup4x4: 2400, celica: 600, ram: 11000, ae86: 1500, civic88: 700, miata90: 900, s13: 1000, fox87: 2500, camaro86: 2000,
   gti84: 700, cabrio90: 700, cabrio01: 900, greta: 1400, fc88: 2500, mr291: 4000, supra3: 3800, gn87: 4500, z3290: 5500, r32: 14000, fd93: 7000, supra4: 12000,
   nsx91: 9000, r34: 16000, viper96: 18000, c964: 8000, ls1: 8000, tdi: 2000, k20: 5000, lt7: 60000, vtwin: 1800, la1: 1500,
   vette1: 7000, vette2: 9500, vette3: 9000, vette4: 5000, vette5: 8000, vette6: 10500, vette7: 13500, vette8: 17000, rabbit83: 600, rabbitpu: 1200,
   caprice66: 3500, caprice85: 1200, caprice94: 4500, grandam73: 3000, grandam79: 1000, grandam87: 1800, grandam93: 1200, grandam01: 1200, insight00: 3000, odyssey10: 2200, ev1: 6000, horse: 0, buggy: 0, roadster26: 40000, atc110: 300, mazdago: 1500, ginogo: 1500, crv97: 1500, beetle67: 900, beetle99: 1800, beetle13: 3200, crv03: 2500, crv07: 2800, explorer91: 1200, explorer98: 1800, alltrac91: 3500, brat85: 600, justy90: 500, wrx99: 6000, wrx16: 6500, svx92: 3500, f15077: 1200, dmc81: 2500, forester11: 2000, metro90: 300};
 // Maker families, for the labor: GM covers Chevrolet and Buick, Honda covers Acura, Chrysler covers Dodge and Ram
-const MAKER = {pickup: 'toyota', celica: 'toyota', ae86: 'toyota', mr291: 'toyota', supra3: 'toyota', supra4: 'toyota', ram: 'chrysler', viper96: 'chrysler',
+const MAKER = {pickup: 'toyota', pickup4x4: 'toyota', celica: 'toyota', ae86: 'toyota', mr291: 'toyota', supra3: 'toyota', supra4: 'toyota', ram: 'chrysler', viper96: 'chrysler',
   civic88: 'honda', nsx91: 'honda', k20: 'honda', vtwin: 'honda', la1: 'gm', lt7: 'gm', miata90: 'mazda', fc88: 'mazda', fd93: 'mazda', s13: 'nissan', z3290: 'nissan', r32: 'nissan', r34: 'nissan',
   fox87: 'ford', camaro86: 'gm', gn87: 'gm', ls1: 'gm', vette1: 'gm', vette2: 'gm', vette3: 'gm', vette4: 'gm', vette5: 'gm', vette6: 'gm', vette7: 'gm', vette8: 'gm', gti84: 'vw', cabrio90: 'vw', cabrio01: 'vw', greta: 'vw', tdi: 'vw', rabbit83: 'vw', rabbitpu: 'vw',
   caprice66: 'gm', caprice85: 'gm', caprice94: 'gm', grandam73: 'gm', grandam79: 'gm', grandam87: 'gm', grandam93: 'gm', grandam01: 'gm', insight00: 'honda', odyssey10: 'honda', roadster26: 'tesla', ev1: 'gm', horse: 'horse', buggy: 'horse', atc110: 'honda', mazdago: 'mazda', ginogo: 'mazda', crv97: 'honda', beetle67: 'vw', beetle99: 'vw', beetle13: 'vw', crv03: 'honda', crv07: 'honda', explorer91: 'ford', explorer98: 'ford', c964: 'porsche', alltrac91: 'toyota', brat85: 'subaru', justy90: 'subaru', wrx99: 'subaru', wrx16: 'subaru', svx92: 'subaru', f15077: 'ford', dmc81: 'delorean', forester11: 'subaru', metro90: 'gm'};
@@ -3038,7 +3083,10 @@ function makeSkid(c) {
 // cylinders, faster chug); depth: how hard each pulse drags the motor; whine: the pinion gear's whine and whineLv its
 // level (the 90s Japanese gear-reduction starters whine high, old Detroit direct-drive ones growl low); time: seconds of
 // cranking before it catches (carbs and big diesels take longer); flare: how high the revs bark on catching, times idle.
+// The built 22R-E: the same big four, cleaner on injection, a little louder through its header
+SOUND.pickup4x4 = Object.assign({}, SOUND.pickup, {lope: 0.2, tick: 0.035, gain: 1.15});
 const STARTERS = {
+  pickup4x4: {hz: 62, chug: 7, depth: 0.22, whine: 2500, whineLv: 0.08, time: 0.75, flare: 1.35},
   pickup: {hz: 58, chug: 7, depth: 0.25, whine: 2400, whineLv: 0.08, time: 0.9, flare: 1.3},
   celica: {hz: 78, chug: 8, depth: 0.2, whine: 3100, whineLv: 0.1, time: 0.55, flare: 1.5},
   ram: {hz: 40, chug: 6, depth: 0.42, whine: 1500, whineLv: 0.06, time: 1.4, flare: 1.15},
@@ -3383,6 +3431,16 @@ function shift(g) {
   if (dRpm < 150 || Math.random() < 0.08 + 0.4 * sync) { S.gear = g; S.grinding = false; S.lurchG = g; sfx('clunk'); log('In gear ' + g + '.'); return; }
   S.gear = 0; S.grinding = true; S.grindG = g;
   grind('Missed the gear. Grinding until the clutch is in or you select neutral.');
+}
+// The transfer case (a car with CFG.lowRange): low range multiplies every gear. Like the real thing it only shifts nearly
+// stopped, or with the clutch in at a crawl. The final drive carries it, so everything that reads CFG.fd follows; physics
+// squares it up at each drive's start, since a new drive starts in high.
+function lowRangeKey() {
+  if (Math.abs(S.v) > 4.5 || (S.gear !== 0 && S.clutch < 0.7)) { log('Slow down and clutch in to shift the transfer case.', 'warn'); return; }
+  S.low = !S.low; sfx('clunk'); log(S.low ? `Low range: ${CFG.lowRange}:1 through every gear. Press {k:h} again for high.` : 'High range.', 'ok');
+}
+function lowRangeStep() {
+  if (CFG.lowOn !== !!S.low) { CFG.fd *= S.low ? CFG.lowRange : 1 / CFG.lowRange; CFG.lowOn = !!S.low; }
 }
 function gearRatio() {
   if (S.gear === 0) return 0;
@@ -3931,6 +3989,7 @@ function drawRollGauge() {
 }
 function physics(dt) {
   S.t += dt;
+  if (CFG.lowRange) lowRangeStep();
   trikeStep(dt);
   // On the banked speedway: the slope across the car (tan of its angle, + when the ground rises to the right) pulls it down
   // the bank, and a car cornering on the banking is pressed into it, so its tires grip harder (N = g cos + a sin)
@@ -7881,6 +7940,7 @@ function clusterGear(x, y, size) {
     ctx.fillStyle = '#fff'; ctx.font = `700 ${Math.round(size * 0.36)}px "IBM Plex Mono", monospace`; ctx.fillText(txt, x - size * 1.5, y + size * (0.71 + row * 0.7)); };
   const trac = tractionLit();
   if (trac) tractionIcon(x - size * 1.5, y + size * 0.6, size * 0.95);
+  if (S.low) lamp('4LO', '#2f9e5a', trac ? 1 : 0);   // the transfer case in low range
   if (S.regenMode) lamp('REGEN', S.regenOn ? '#2f9e5a' : '#25502f', trac ? 1 : 0);   // Greta's regen mode (bright while it is charging)
   // VTEC light on the other side, lit while the engine is on the high cam
   if (S.vtec) {
@@ -8774,6 +8834,7 @@ function hud() {
   $('spd').textContent = fmtSpeed();
   $('rpm').textContent = Math.round(S.rpm) + ' rpm';
   $('gear').textContent = S.gear === 0 ? 'N' : S.gear === -1 ? 'R' : CFG.cvt ? 'D' : CFG.auto ? 'D' + (S.agear || 1) : S.gear;
+  $('loLamp').hidden = !S.low;
   $('tracLamp').style.display = tractionLit() ? '' : 'none';   // (an SVG ignores the hidden property, so its display is set)
   $('needle').setAttribute('transform', `rotate(${-135 + clamp(S.rpm / CFG.gaugeMax, 0, 1) * 270} 100 100)`);
   $('pc').style.height = (S.clutch * 100) + '%';
@@ -9369,7 +9430,7 @@ addEventListener('keydown', e => {
       else { S.hand = !S.hand; S.handPull = false; log(S.hand ? 'E-brake on.' : 'E-brake off.'); }
       break;
     // H: the Tesla's hop; on Greta it switches her regen mode (the rear motor braking hard to charge) on or off
-    case 'KeyH': if (e.repeat) break; if (CFG.rearAssist) { S.regenMode = !S.regenMode; log(S.regenMode ? 'Regen mode: the rear motor slows the car and charges the battery. Any throttle ends it.' : 'Regen mode off.', 'ok'); } else hop(); break;
+    case 'KeyH': if (e.repeat) break; if (CFG.lowRange) lowRangeKey(); else if (CFG.rearAssist) { S.regenMode = !S.regenMode; log(S.regenMode ? 'Regen mode: the rear motor slows the car and charges the battery. Any throttle ends it.' : 'Regen mode off.', 'ok'); } else hop(); break;
     case 'KeyV': VIEW = VIEW === 'cockpit' ? 'chase' : 'cockpit'; camS = null; break;
     case 'KeyM': toggleUnits(); break;
     case 'Backspace': if (LESSON !== null) showLessons(); else if ((RACE !== null || EVT !== null) && S.started && !S.finished) askQuitRace('races'); else if (CAREER_CAR) showCareer(RACE !== null || EVT !== null ? 'races' : 'garage'); else showGarage(); break;
@@ -9484,7 +9545,7 @@ function applyCarDefaults(id, eng) {
   // The car with its engine (a swapped one if fitted). Settings only some cars have go back to their defaults first,
   // so nothing carries over from the last car.
   const C = effCar(id, eng);
-  Object.assign(CFG, {abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
+  Object.assign(CFG, {lowRange: null, lowOn: false, snowBase: null, abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
   CFG.engineKey = eng && ENGINES[eng] ? eng : id;
   if (!CFG.tank) CFG.tank = tankFor(id);
   CFG.redZone = C.redline;   // the tach's red zone: the factory redline, whatever the tune does to the limiter
@@ -9547,6 +9608,7 @@ const ROSTER = [
   {id: 'justy90', tier: 1, name: 'Subaru Justy 4WD', year: 1990, hp: 73, kg: 820, drive: 'AWD', price: 1100, body: 'justy90', paint: '#7c8a99', years: [1987, 1994]},
   {id: 'metro90', tier: 1, name: 'Geo Metro', year: 1990, hp: 55, kg: 740, drive: 'FWD', price: 700, body: 'metro90', paint: '#2f6fb0', years: [1989, 1994]},
   {id: 'forester11', tier: 1, name: 'Subaru Forester', year: 2011, hp: 170, kg: 1480, drive: 'AWD', price: 5200, body: 'forester11', paint: '#3e5c4a', years: [2009, 2013]},
+  {id: 'pickup4x4', tier: 1, name: 'Toyota Pickup 4x4 (built)', year: 1990, hp: 135, kg: 1720, drive: 'AWD', price: 7500, body: 'pickup4x4', paint: '#a8362a', years: [1989, 1995], noAI: true},
   {id: 'f15077', tier: 1, name: 'Ford F-150 Stepside', year: 1977, hp: 163, kg: 1950, drive: 'RWD', price: 1600, body: 'f15077', paint: '#7a5a3a', years: [1973, 1979]},
   {id: 'ginogo', tier: 1, name: "Mazda-Go Gino's Pizza", year: 1931, hp: 10, kg: 540, drive: 'RWD', price: 4000, body: 'ginogo', paint: '#b8231f', years: [1931, 1931], special: true},   // a prize: never in the market or the AI fields
   {id: 'insight00', tier: 1, name: 'Honda Insight', year: 2000, hp: 73, kg: 850, drive: 'FWD', price: 3800, body: 'insight00', paint: '#b9bcc0', years: [2000, 2006]},
@@ -11262,7 +11324,7 @@ const SUVS = ['crv97', 'crv03', 'crv07', 'explorer91', 'explorer98', 'forester11
 const isTrucky = r => isTruck(r) || SUVS.includes(r.body);
 const midOrRear = r => !!(CARS[r.body] && (CARS[r.body].mid || CARS[r.body].rearEngine));
 // Trucks, for the Diesel Drag: the Toyota pickup, the Ram, the Rabbit Pickup and the Subaru BRAT
-const isTruck = r => r.body === 'pickup' || r.body === 'ram' || r.body === 'rabbitpu' || r.body === 'brat85' || r.body === 'f15077';
+const isTruck = r => r.body === 'pickup' || r.body === 'pickup4x4' || r.body === 'ram' || r.body === 'rabbitpu' || r.body === 'brat85' || r.body === 'f15077';
 const carYear = c => c.year || rosterOf(c).year;
 // Rough power of a career car as it stands: its engine (swapped or not), forced induction, exhaust and condition
 function carHp(c) {
@@ -12240,7 +12302,7 @@ function applyMods(id, mm) {
   CFG.wetGrip = dtt ? [0.72, 0.76, 0.8, 0.72][dtt] : trike ? 0.8 : [0.72, 0.75, 0.6, 0.4][tt];
   // ...and in snow (the mountain pass), as a share of that tire's own dry grip: chunky off-road tread bites into it best,
   // summer performance rubber goes hard and slides, and a slick is close to hopeless
-  CFG.snowGrip = dtt ? [0.5, 0.62, 0.72, 0.65][dtt] : trike ? 0.6 : [0.5, 0.38, 0.27, 0.15][tt];
+  CFG.snowGrip = dtt ? [0.5, 0.62, 0.72, 0.65][dtt] : trike ? 0.6 : CFG.snowBase && !tt ? CFG.snowBase : [0.5, 0.38, 0.27, 0.15][tt];
   if (su.stiff) { CFG.Cf *= su.stiff; CFG.Cr *= su.stiff; }
   if (su.grip) { CFG.muF *= su.grip; CFG.muR *= su.grip; }
   const wt = partCatsFor(id, m.engine).includes('weight') ? PART_TIERS.weight.tiers[tierOf(m.weight)] : {};
