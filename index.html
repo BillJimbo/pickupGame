@@ -4028,7 +4028,7 @@ function drawRollGauge() {
 }
 // Air time and suspension. The ground is only a height under the car, so leaving it is a matter of looking ahead: if a tenth
 // of a second from now the ground will be further below than gravity can pull the car (a lip, a crest), it is airborne,
-// with the climb it had. In the air S.zc is its real height, S.hz how far that is over the ground (which can fall away
+// with most of the climb it had. In the air S.zc is its real height, S.hz how far that is over the ground (which can fall away
 // faster than it falls), there is no grip, and the body keeps its own angle, the nose slowly dropping. Coming down, the
 // springs take it. S.sb is the body riding those springs: its height, pitch and roll chasing the ground under the wheels,
 // as a damped spring with bump stops, while the wheels stay on the ground within their travel (see rigidPlane, glcBox).
