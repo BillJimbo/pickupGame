@@ -3411,6 +3411,7 @@ function shutOff() {
   log('Engine off.');
 }
 function startEngine() {
+  if (S.tip) return;   // (not while it is rolling over or standing back up)
   if (S.engineOn || S.cranking > 0 || S.finished) return;
   // An electric car has nothing to crank: the key just switches it to ready
   if (CFG.horse) { S.engineOn = true; S.started = true; sfx('neigh'); log('Ready to go. D ({k:g1}) and {k:throttle} to urge it on; {k:brake} reins back.', 'ok'); return; }
@@ -3442,6 +3443,7 @@ function rpmInGear(g) {
   return Math.abs(S.v) / CFG.r * ratio * CFG.fd * 60 / (2 * Math.PI);
 }
 function shift(g) {
+  if (S.tip) return;
   if (S.finished || (S.gear === g && !S.grinding)) return;
   if (g === -1 && CFG.noReverse) { log('No reverse on this one. Get off and push.', 'warn'); return; }
   // The ATC's foot shifter: one gear at a time, the automatic clutch opening for the shift, so it never grinds
@@ -3935,10 +3937,10 @@ function tireGrip() {
   const wetG = snowing() ? CFG.snowGrip || 0.5 : CFG.wetGrip || 0.72;   // up on the mountain pass it falls as snow: each tire has its own snow figure
   return r ? dry * (1 - r) + wetG * (0.6 + 0.4 * t) * r : dry;
 }
-// Three-wheelers roll, and tip. The body leans outward in a corner (S.roll, degrees, + to the right), sprung toward
+// Three-wheelers roll, and tip. The body leans outward in a corner (S.roll, degrees, + in a right turn, so leaning left), sprung toward
 // an angle set by the sideways force: the machine's tipping force (tipAccel, m/s/s) puts it at the 30 degree red line.
 // The spring is critically damped, so a sudden flick leans it no further than holding the turn would. Past
-// 20 degrees it warns; past 30 it rolls over, stopping dead with the engine off and a scuffed body. The inclinometer
+// 20 degrees it warns; past 30 it really rolls over (startTip, tipStep), engine off, and slowly stands back up. The inclinometer
 // (drawRollGauge) shows it live. The ATC also warns about a light front end when floored in first, and says so the
 // first time it hits the dirt.
 const ROLL_WARN = 20, ROLL_TIP = 30;
@@ -3951,17 +3953,20 @@ function rollSpeedMul(v) {
   const f = v / vmax, lerp = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
   return f <= 0.34 ? 0.45 : f <= 0.5 ? lerp(0.45, 1.06, (f - 0.34) / 0.16) : lerp(1.06, 1.15, (f - 0.5) / 0.3);
 }
+// The angle the body really shows (radians, + rolled to the right) for a gauge reading: on its tires to 10 degrees at the
+// amber line, then quickly up on two wheels to 30 at the red line
+function leanOf(roll) { const g = Math.abs(roll); return -Math.sign(roll) * (g <= ROLL_WARN ? g * 0.5 : 10 + (g - ROLL_WARN) * 2) * Math.PI / 180; }
 function trikeStep(dt) {
-  if (!CFG.trikeTips) return;
-  const v = Math.abs(S.v), target = clamp(S.v * S.r / (CFG.tipAccel || 5.6) * ROLL_TIP * (CFG.rollMul || 1) * rollSpeedMul(v), -60, 60);
+  if (!CFG.trikeTips || S.tip) return;   // (tipStep has it during a rollover)
+  const v = Math.abs(S.v), target = S.aloft ? 0 : clamp(S.v * S.r / (CFG.tipAccel || 5.6) * ROLL_TIP * (CFG.rollMul || 1) * rollSpeedMul(v), -60, 60);
   S.rollV = (S.rollV || 0) + ((target - (S.roll || 0)) * 40 - (S.rollV || 0) * 12.6) * dt;   // critically damped: a flick does not overshoot
   S.roll = (S.roll || 0) + S.rollV * dt;
-  if (Math.abs(S.roll) > ROLL_WARN && v > 4 && S.t - (S.tipWarnAt ?? -9) > 3) { S.tipWarnAt = S.t; log('Up on two wheels! Lean into the turn and ease off.', 'warn'); }
-  if (Math.abs(S.roll) > ROLL_TIP) {
-    S.roll = 0; S.rollV = 0; Object.assign(S, {v: 0, ww: 0, vy: 0, r: 0, engineOn: false, rpm: 0, gear: 0}); S.crashes++; sfx('knock');
-    if (CAREER_CAR) CAREER_CAR.body = Math.max(0, CAREER_CAR.body - 6);
-    log('Rolled it! Stand it back up: it is in neutral, start it again with I.', 'bad');
+  if (S.sb) {   // the lean pivots on the outside wheels
+    const a = leanOf(S.roll), sh = CARS[CFG.body].shape, pv = Math.sign(a) * (sh.track + sh.tw);
+    S.sb.tilt = a; S.sb.tv = pv * (1 - Math.cos(a)); S.sb.dz = pv * Math.sin(a);
   }
+  if (Math.abs(S.roll) > ROLL_WARN && v > 4 && S.t - (S.tipWarnAt ?? -9) > 3) { S.tipWarnAt = S.t; log('Up on two wheels! Lean into the turn and ease off.', 'warn'); }
+  if (Math.abs(S.roll) > ROLL_TIP && !S.aloft) startTip(-Math.sign(S.roll));
   if (CFG.body !== 'atc110') return;
   if (S.gear === 1 && S.thr > 0.8 && S.ax > 2.2 && S.t - (S.wheelieAt ?? -9) > 5) { S.wheelieAt = S.t; log('Front wheel lifting! Weight forward over the bars.', 'warn'); }
   if (onDirt() && v > 3 && !S.dirtTold) { S.dirtTold = true; log('Off the road: the balloon tires love it out here.', 'ok'); }
@@ -4008,7 +4013,7 @@ function drawRollGauge() {
     ctx.beginPath(); ctx.moveTo(cx + Math.cos(t) * r0, cy + Math.sin(t) * r0); ctx.lineTo(cx + Math.cos(t) * r * 0.86, cy + Math.sin(t) * r * 0.86); ctx.stroke();
   }
   // The machine from behind, rider and all, leaning with the body
-  ctx.translate(cx, cy + r * 0.32); ctx.rotate(roll * deg);
+  ctx.translate(cx, cy + r * 0.32); ctx.rotate(-roll * deg);
   const k = r / 100, paint = CFG.paint || CARS[CFG.body].paint, R = CFG.rider || {top: '#2c4a7a', hat: '#d8d4c8'};
   ctx.fillStyle = '#151413'; ctx.fillRect(-52 * k, -6 * k, 26 * k, 34 * k); ctx.fillRect(26 * k, -6 * k, 26 * k, 34 * k);   // rear wheels
   ctx.fillStyle = paint; ctx.fillRect(-56 * k, -12 * k, 112 * k, 10 * k);                                                // fenders
@@ -4017,14 +4022,91 @@ function drawRollGauge() {
   ctx.fillStyle = R.hat; ctx.beginPath(); ctx.arc(0, -62 * k, 13 * k, 0, Math.PI * 2); ctx.fill();                      // helmet
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   // The needle, and the reading
-  const t = (-90 + clamp(roll, -60, 60)) * deg, over = Math.abs(roll) > ROLL_WARN;
+  const t = (-90 - clamp(roll, -60, 60)) * deg, over = Math.abs(roll) > ROLL_WARN;
   ctx.strokeStyle = over ? '#ffb02e' : '#f2eee4'; ctx.lineWidth = Math.max(1.5, r * 0.05); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(cx + Math.cos(t) * r * 0.55, cy + Math.sin(t) * r * 0.55); ctx.lineTo(cx + Math.cos(t) * r * 0.92, cy + Math.sin(t) * r * 0.92); ctx.stroke();
   ctx.fillStyle = Math.abs(roll) > ROLL_WARN ? '#ffb02e' : '#d8d4c8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = `700 ${Math.round(r * 0.26)}px "Barlow Condensed", Impact, sans-serif`;
-  ctx.fillText(`${Math.round(Math.abs(roll))}°${Math.abs(roll) >= 1 ? (roll > 0 ? ' R' : ' L') : ''}`, cx, cy + r * 0.82);
+  ctx.fillText(`${Math.round(Math.abs(roll))}°${Math.abs(roll) >= 1 ? (roll > 0 ? ' L' : ' R') : ''}`, cx, cy + r * 0.82);
   ctx.font = `${Math.round(r * 0.14)}px "IBM Plex Mono", monospace`; ctx.fillStyle = '#8c8170'; ctx.fillText('ROLL', cx, cy - r * 0.42);
   ctx.restore();
+}
+// A real rollover: the machine seen end-on is a rigid outline (every part's corners and the wheels, rider included) with its
+// weight at cg, and it flies, bounces and rolls on that outline under gravity. The tires let go, so as the heading keeps
+// turning the machine slides sideways, and the ground's friction at the contact point is what spins it over, more of it the
+// faster it was going; that friction also slows it down. Once still it rests a moment, then slowly stands back up, turning on
+// its outline so nothing sinks into the ground. S.tip holds the state; the body's frame reads S.sb.tilt, tv and dz (rigidPlane).
+function tipHull() {
+  const sh = CARS[CFG.body].shape, w = sh.track + sh.tw, d = (CFG.r || 0.3) * 2, pts = [[-w, 0], [w, 0], [-w, d], [w, d]];
+  for (const q of sh.parts) for (const v of [q[3], q[4]]) for (const z of [q[5], q[6]]) pts.push([v, z]);
+  return pts;
+}
+function startTip(dir) {
+  if (S.tip || !S.sb) return;
+  const B = S.sb, a = (B.tilt || 0) * dir > 0 ? B.tilt : 0, sp = Math.abs(S.v), cg = (CFG.cgH || 0.5) + 0.2;
+  const rv = (a ? B.tv : 0) + cg * Math.sin(a), up = a ? B.dz : 0;   // (the weight's place is the machine's place from here on)
+  S.x -= Math.sin(S.h) * rv; S.y += Math.cos(S.h) * rv;
+  S.tip = {phase: 'tumble', a, w: dir * clamp(1.2 + sp * 0.12, 1.5, 9), h: up + cg * Math.cos(a), vz: 0, t: 0, still: 0, thump: 0, hull: tipHull(), cg};
+  S.vy += dir * sp * 0.25;
+  S.aloft = false; S.hz = 0; S.vz = 0; S.rollV = 0;
+  Object.assign(S, {engineOn: false, rpm: 0, gear: 0, ww: S.v}); S.crashes++; damageBody(6); sfx('knock');
+  S.tipCam = VIEW === 'cockpit'; if (S.tipCam) { VIEW = 'chase'; camS = null; }   // (watch it from outside; it goes back after)
+  log('Rolled it!', 'bad');
+}
+// The height of the weight over the ground when the outline's lowest point touches it, at this angle
+function tipRest(T) {
+  const ca = Math.cos(T.a), sa = Math.sin(T.a); let m = 1e9;
+  for (const p of T.hull) m = Math.min(m, -p[0] * sa + (p[1] - T.cg) * ca);
+  return -m;
+}
+function tipStep(dt) {
+  const T = S.tip, K2 = 0.2, MU = 0.65, gz = elev(S.x, S.y);   // (K2: the roll inertia over the mass)
+  S.gzP = gz; S.vgS = 0;
+  T.t += dt; T.thump -= dt;
+  if (T.phase === 'tumble') {
+    const n = Math.ceil(dt * 480), d = dt / n; let touch = false;
+    for (let i = 0; i < n; i++) {
+      T.vz -= 9.81 * d; T.h += T.vz * d; T.a += T.w * d;
+      const ca = Math.cos(T.a), sa = Math.sin(T.a); let m = 1e9, cv = 0, cz = 0;
+      for (const p of T.hull) { const z = -p[0] * sa + (p[1] - T.cg) * ca; if (z < m) { m = z; cz = z; cv = p[0] * ca + (p[1] - T.cg) * sa; } }
+      if (T.h + m >= 0) continue;
+      T.h = -m; touch = true; T.w *= 1 - 1.5 * d;
+      const Vn = T.vz - T.w * cv, Vt = S.vy + T.w * cz;
+      if (Vn >= 0) continue;
+      const jn = -(1 + (Vn < -1.5 ? 0.25 : 0)) * Vn / (1 + cv * cv / K2);
+      T.vz += jn; T.w -= jn * cv / K2;
+      const jt = clamp(-Vt / (1 + cz * cz / K2), -MU * jn, MU * jn);
+      S.vy += jt; T.w += jt * cz / K2;
+      S.v -= Math.sign(S.v) * Math.min(Math.abs(S.v), MU * jn);   // scraping along
+      if (Vn < -2.5 && T.thump <= 0) {
+        T.thump = 0.12; damageBody((-Vn - 2.5) * 0.5); sfx('clunk');
+        if (AU) burst(0.16, 95, 0.7, Math.min(1.1, -Vn * 0.15), 'lowpass');
+        if (!SHOWCASE) for (let k = 0; k < 10; k++) { const q = Math.random() * 6.28; DUST.push({x: S.x + Math.cos(q) * 0.7, y: S.y + Math.sin(q) * 0.7, z: 0.15, vx: Math.cos(q) * (1 + Math.random() * 3), vy: Math.sin(q) * (1 + Math.random() * 3), vz: 0.5 + Math.random() * 1.5, life: 1}); }
+      }
+    }
+    S.r *= 1 - Math.min(1, dt * (touch ? 3 : 0.5));
+    if (touch && Math.abs(T.w) < 0.3 && Math.abs(T.vz) < 0.4 && Math.hypot(S.v, S.vy) < 1) T.still += dt; else T.still = 0;
+    if (T.still > 0.3 || T.t > 7) { T.phase = 'rest'; T.t = 0; }
+  } else {
+    S.v = S.vy = S.r = 0;
+    if (T.phase === 'rest' && T.t > 0.9) {
+      T.phase = 'rise'; T.t = 0; T.from = T.a; T.to = Math.round(T.a / (2 * Math.PI)) * 2 * Math.PI;
+      T.dur = clamp(1.5 + Math.abs(T.to - T.from) / 0.4, 2.5, 7);
+      log('Standing it back up...', 'warn');
+    }
+    if (T.phase === 'rise') { const k = clamp(T.t / T.dur, 0, 1); T.a = T.from + (T.to - T.from) * k * k * (3 - 2 * k); }
+    T.h = tipRest(T); T.vz = 0;
+  }
+  S.ww = S.v;
+  rideStep(dt);
+  const B = S.sb;
+  B.tilt = T.a; B.tv = -T.cg * Math.sin(T.a); B.dz = gz + T.h - T.cg * Math.cos(T.a) - B.oz;
+  S.roll = -wrapA(T.a) * 180 / Math.PI;   // (the inclinometer follows it round)
+  if (T.phase === 'rise' && T.t >= T.dur) {
+    S.tip = null; S.roll = 0; S.rollV = 0; B.tilt = 0; B.tv = 0; B.dz = 0; B.zv -= 0.5; sfx('clunk');
+    if (S.tipCam) { VIEW = 'cockpit'; camS = null; }
+    log('Back on its wheels. It is in neutral: start it with {k:crank}.', 'ok');
+  }
 }
 // Air time and suspension. The ground is only a height under the car, so leaving it is a matter of looking ahead: if a tenth
 // of a second from now the ground will be further below than gravity can pull the car (a lip, a crest), it is airborne,
@@ -4039,6 +4121,7 @@ function groundPlane(b) {
   return {oz: er - uR * gu, gu, gv: (g(0, tr) - g(0, -tr)) / (2 * tr)};
 }
 function airStep(dt) {
+  if (S.tip) return tipStep(dt);
   const c = Math.cos(S.h), sn = Math.sin(S.h), wx = S.v * c - S.vy * sn, wy = S.v * sn + S.vy * c, gz = elev(S.x, S.y);
   const vg = clamp((gz - (S.gzP ?? gz)) / dt, -30, 30);   // how fast the ground under the car is rising, smoothed over a few steps
   S.gzP = gz; S.vgS = (S.vgS ?? vg) + (vg - (S.vgS ?? vg)) * Math.min(1, dt * 40);
@@ -4065,6 +4148,7 @@ function landed(hit) {
   if (hit > 9) { damageBody((hit - 9) * 1.2); if (hit > 12) log('Hard landing!', 'bad'); }
   if (isTrailMap() && TRAIL_ZW - elev(S.x, S.y) > 0.05) { S.inWater = true; bigSplash(clamp(hit / 8, 0.35, 1), TRAIL_ZW - elev(S.x, S.y)); }   // down into a river
   else if (onDirt() && hit > 1.5 && !SHOWCASE) for (let k = 0; k < Math.min(24, hit * 3); k++) { const a = Math.random() * 6.28; DUST.push({x: S.x + Math.cos(a) * 1.4, y: S.y + Math.sin(a) * 1.4, z: 0.15, vx: Math.cos(a) * (1 + Math.random() * 3), vy: Math.sin(a) * (1 + Math.random() * 3), vz: 0.5 + Math.random() * 1.5, life: 1}); }
+  if (CFG.trikeTips && (hit > 10 || (hit > 6 && Math.abs(S.vy) > 1.5))) startTip(S.vy < 0 ? -1 : 1);   // a three-wheeler lands badly
 }
 // The body on its springs: stiffer with sport suspension, softer and longer on a car with its own CFG.travel
 function rideStep(dt) {
@@ -4124,7 +4208,7 @@ function physics(dt) {
   } else S.gw = 0;
   S.bzv = ((S.bzv || 0) + (-(S.bz || 0) * 190 - (S.bzv || 0) * 15) * dt); S.bz = (S.bz || 0) + S.bzv * dt;   // the springs settle
   S.blv = ((S.blv || 0) + (-(S.bl || 0) * 140 - (S.blv || 0) * 13) * dt); S.bl = (S.bl || 0) + S.blv * dt;
-  const air = S.hz > 0.02, SG = air ? 0 : surfGrip() * bankGrip * (1 + clamp(S.gw || 0, -0.07, 0.07));   // in the air the tires have nothing to grip
+  const air = S.hz > 0.02 || !!S.tip, SG = air ? 0 : surfGrip() * bankGrip * (1 + clamp(S.gw || 0, -0.07, 0.07));   // in the air the tires have nothing to grip
   camStep(dt);
   hybridStep(dt);
   if (CFG.horse) horseStride(dt);
@@ -5659,6 +5743,7 @@ function drawBoxNow(cp, u0, u1, v0, v1, z0, z1, side, top, end, lamps) {
   }
   if (cv > v1) quad([u0, v1, z0], [u1, v1, z0], [u1, v1, z1], [u0, v1, z1], side);
   if (cv < v0) quad([u0, v0, z0], [u1, v0, z0], [u1, v0, z1], [u0, v0, z1], side);
+  if (R && R.under && camZ < z0) quad([u0, v0, z0], [u1, v0, z0], [u1, v1, z0], [u0, v1, z0], end);   // (its underside, on a machine rolled over)
   if (camZ > z1) quad([u0, v0, z1], [u1, v0, z1], [u1, v1, z1], [u0, v1, z1], top);
 }
 // Fill a face and stroke its edge in the same color, so neighboring faces meet without hairline gaps
@@ -5879,7 +5964,14 @@ function rigidPlane(b) {
   // Forward along the slope; right square to it, along the side slope; up square to both
   const fl = Math.hypot(1, gu), fx = c / fl, fy = s / fl, fz = gu / fl, d = -s * fx + c * fy + gv * fz;
   let rx = -s - d * fx, ry = c - d * fy, rz = gv - d * fz; const rl = Math.hypot(rx, ry, rz); rx /= rl; ry /= rl; rz /= rl;
-  return {ox: S.x, oy: S.y, oz: oz0, tb: tv[0], td: tv[1], fx, fy, fz, rx, ry, rz, ux: fy * rz - fz * ry, uy: fz * rx - fx * rz, uz: fx * ry - fy * rx};
+  let ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx, ox = S.x, oy = S.y, oz = oz0, tb = tv[0], td = tv[1], under = false;
+  if (P.tilt) {   // rolled about its length (a three-wheeler leaning or going over): any angle, all the way round. The wheels stop following the ground.
+    const A = P.tilt, ca = Math.cos(A), sa = Math.sin(A), t = P.tv || 0, k = clamp((0.52 - Math.abs(A)) / 0.35, 0, 1);
+    ox += rx * t; oy += ry * t; oz += P.dz || 0; tb *= k; td *= k; under = Math.abs(A) > 0.35;
+    const r2 = [ca * rx - sa * ux, ca * ry - sa * uy, ca * rz - sa * uz], u2 = [sa * rx + ca * ux, sa * ry + ca * uy, sa * rz + ca * uz];
+    [rx, ry, rz] = r2; [ux, uy, uz] = u2;
+  }
+  return {ox, oy, oz, tb, td, under, fx, fy, fz, rx, ry, rz, ux, uy, uz};
 }
 // A point on the vehicle (forward, right, up from its center on the ground) in the world, with the body's own pitch on its
 // springs as a small rotation (so that too stays rigid)
@@ -7621,6 +7713,7 @@ function glcBox(cp, u0, u1, v0, v1, z0, z1, side, top, end) {
   if (cu < u0) quad([u0, v0, z0], [u0, v1, z0], [u0, v1, z1], [u0, v0, z1], end);
   if (cv > v1) quad([u0, v1, z0], [u1, v1, z0], [u1, v1, z1], [u0, v1, z1], side);
   if (cv < v0) quad([u0, v0, z0], [u1, v0, z0], [u1, v0, z1], [u0, v0, z1], side);
+  if (R && R.under && camZ < z0) quad([u0, v0, z0], [u1, v0, z0], [u1, v1, z0], [u0, v1, z0], end);   // (its underside, on a machine rolled over)
   if (camZ > z1) quad([u0, v0, z1], [u1, v0, z1], [u1, v1, z1], [u0, v1, z1], top);
   if (alpha < 255) GLC.nT = n; else GLC.n = n;
 }
@@ -8205,6 +8298,7 @@ function draw(dt) {
   if (VIEW === 'cockpit' && !SHOWCASE && S.hz <= 0.02) {
     const rx = -Math.sin(S.h) * 0.8, ry = Math.cos(S.h) * 0.8;
     roll = Math.atan((elev(S.x + rx, S.y + ry) - elev(S.x - rx, S.y - ry)) / 1.6);
+    if (CFG.trikeTips && S.sb && S.sb.tilt) roll -= S.sb.tilt;   // (leaning with the three-wheeler)
   }
   S.camRoll = (S.camRoll || 0) + (roll - (S.camRoll || 0)) * Math.min(1, dt * 8);
   const rolled = Math.abs(S.camRoll) > 0.003 && VIEW === 'cockpit' && !SHOWCASE;
@@ -9906,7 +10000,7 @@ addEventListener('keydown', e => {
       break;
     // H: the Tesla's hop; on Greta it switches her regen mode (the rear motor braking hard to charge) on or off
     case 'KeyH': if (e.repeat) break; if (CFG.lowRange) lowRangeKey(); else if (CFG.rearAssist) { S.regenMode = !S.regenMode; log(S.regenMode ? 'Regen mode: the rear motor slows the car and charges the battery. Any throttle ends it.' : 'Regen mode off.', 'ok'); } else hop(); break;
-    case 'KeyV': VIEW = VIEW === 'cockpit' ? 'chase' : 'cockpit'; camS = null; break;
+    case 'KeyV': if (S.tip) { S.tipCam = !S.tipCam; break; } VIEW = VIEW === 'cockpit' ? 'chase' : 'cockpit'; camS = null; break;
     case 'KeyM': toggleUnits(); break;
     case 'Backspace': if (LESSON !== null) showLessons(); else if ((RACE !== null || EVT !== null) && S.started && !S.finished) askQuitRace('races'); else if (CAREER_CAR) showCareer(RACE !== null || EVT !== null ? 'races' : 'garage'); else showGarage(); break;
   }
@@ -11398,6 +11492,7 @@ function ghostPose(g, t) {
   if (n < 1) return {x: g.x[0], y: g.y[0], h: g.h[0], hz: 0, gu: 0};
   // (both ends in the air, so a ghost does not smear its way up from the ground)
   const air = g.z && g.a && g.z[i] > 0.02 ? {hz: g.z[i] + (g.z[i + 1] - g.z[i]) * k, gu: g.a[i] + (g.a[i + 1] - g.a[i]) * (g.z[i + 1] > 0 ? k : 0)} : {hz: 0, gu: 0};
+  if (g.l && g.t && g.z && (g.l[i] || g.l[i + 1])) Object.assign(air, {hz: g.z[i] + (g.z[i + 1] - g.z[i]) * k, gu: 0, tilt: g.l[i] + wrapA(g.l[i + 1] - g.l[i]) * k || 1e-6, tv: g.t[i] + (g.t[i + 1] - g.t[i]) * k});
   return Object.assign({x: g.x[i] + (g.x[i + 1] - g.x[i]) * k, y: g.y[i] + (g.y[i + 1] - g.y[i]) * k, h: g.h[i] + wrapA(g.h[i + 1] - g.h[i]) * k}, air);
 }
 // How far behind the ghost you are (seconds, negative ahead): when did the ghost reach the point you are at now?
@@ -11423,7 +11518,7 @@ function finishTimedRun() {
   const ev = RX.ev, laps = RX.lapTimes.map((t, k) => t - (k ? RX.lapTimes[k - 1] : 0)), g = RX.ghost;
   LAST_RUN = {format: 'pickup-trial-ghost', v: 1, date: new Date().toISOString().slice(0, 10), driver: (SETTINGS.driverName || '').slice(0, 24),
     car: TT_USED.id, mods: TT_USED.mods, paint: CFG.paint, map: ev.map, laps: ev.laps, rain: ev.rain || 0, tod: ev.tod || 'day', time: +RX.done.toFixed(3), lapTimes: laps.map(t => +t.toFixed(3)),
-    jump: RX.jump, pen: +(RX.pen || 0).toFixed(2), dt: GHOST_DT, x: RX.rec.x, y: RX.rec.y, h: RX.rec.h, p: RX.rec.p, z: RX.rec.z, a: RX.rec.a};
+    jump: RX.jump, pen: +(RX.pen || 0).toFixed(2), dt: GHOST_DT, x: RX.rec.x, y: RX.rec.y, h: RX.rec.h, p: RX.rec.p, z: RX.rec.z, a: RX.rec.a, l: RX.rec.l.length ? RX.rec.l : undefined, t: RX.rec.t.length ? RX.rec.t : undefined};
   const gl = g ? g.lapTimes : null;
   const rows = laps.map((t, k) => `<tr><td>Lap ${k + 1}</td><td style="text-align:right">${fmtRun(t)}</td>${gl ? `<td style="text-align:right;color:var(--dim)">${gl[k] !== undefined ? fmtRun(gl[k]) : ''}</td><td style="text-align:right;color:${gl[k] !== undefined && t <= gl[k] ? 'var(--ok)' : 'var(--bad)'}">${gl[k] !== undefined ? (t <= gl[k] ? '−' : '+') + Math.abs(t - gl[k]).toFixed(2) : ''}</td>` : ''}</tr>`).join('');
   const verdict = g ? (RX.done < g.time ? `<p style="color:var(--ok)"><b>You beat the ghost by ${(g.time - RX.done).toFixed(2)} s!</b></p>` : `<p style="color:var(--bad)"><b>The ghost wins by ${(RX.done - g.time).toFixed(2)} s.</b></p>`) : '';
@@ -11472,7 +11567,8 @@ function readGhost(text) {
   return {format: o.format, rain: o.rain ? 1 : 0, tod: ['morning', 'day', 'evening', 'night'].includes(o.tod) ? o.tod : 'day', car: o.car, mods, paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : null, map: o.map, laps: Math.round(o.laps), time: +o.time,
     lapTimes: (o.lapTimes || []).filter(t => typeof t === 'number'), driver: typeof o.driver === 'string' ? o.driver.slice(0, 24) : '', date: typeof o.date === 'string' ? o.date.slice(0, 10) : '',
     dt: o.dt > 0.01 && o.dt < 1 ? o.dt : GHOST_DT, x: o.x, y: o.y, h: o.h, p: o.p,
-    z: num(o.z) && o.z.length === o.x.length ? o.z : null, a: num(o.a) && o.a.length === o.x.length ? o.a : null};   // (older ghosts have no air time: they stay on the ground)
+    z: num(o.z) && o.z.length === o.x.length ? o.z : null, a: num(o.a) && o.a.length === o.x.length ? o.a : null,
+    l: num(o.l) && o.l.length === o.x.length ? o.l : null, t: num(o.t) && o.t.length === o.x.length ? o.t : null};   // (older ghosts have no air time: they stay on the ground)
 }
 function renderGhostInfo(err) {
   const box = $('ghostInfo');
@@ -12096,7 +12192,7 @@ function startEvent(i) {
   }
   Object.assign(S, {x: RX.grid.x, y: RX.grid.y, h: RX.grid.h});
   RX.lastU = strip ? 0 : nearestArc(S.x, S.y);
-  if (ev.ghostRun) { RX.rec = {x: [], y: [], h: [], p: [], z: [], a: []}; RX.lapTimes = []; RX.ghost = GHOST_RACE ? GHOST : null; }
+  if (ev.ghostRun) { RX.rec = {x: [], y: [], h: [], p: [], z: [], a: [], l: [], t: []}; RX.lapTimes = []; RX.ghost = GHOST_RACE ? GHOST : null; }
   $('checkT').textContent = ev.series.name; $('checkX').innerHTML = ''; $('check').hidden = false;
   renderEventHud();
   $('overlay').querySelector('.lbl').textContent = ev.series.name;
@@ -12202,7 +12298,9 @@ function eventTick(dt) {
   // A timed run records where you are 20 times a second from the green light: the ghost
   if (RX.rec && RX.t >= 0 && RX.done === null) while (RX.rec.x.length * GHOST_DT <= RX.t) {
     RX.rec.x.push(+S.x.toFixed(2)); RX.rec.y.push(+S.y.toFixed(2)); RX.rec.h.push(+S.h.toFixed(3)); RX.rec.p.push(+RX.prog.toFixed(1));
-    RX.rec.z.push(S.aloft ? +S.hz.toFixed(2) : 0); RX.rec.a.push(S.aloft ? +S.airGu.toFixed(3) : 0);   // (its air time: height over the ground and the body's slope)
+    const tl = CFG.trikeTips && S.sb && S.sb.tilt || 0;
+    if (CFG.trikeTips) { RX.rec.l.push(+wrapA(tl).toFixed(3)); RX.rec.t.push(tl ? +S.sb.tv.toFixed(3) : 0); }   // (a three-wheeler's lean and rollovers)
+    RX.rec.z.push(S.aloft ? +S.hz.toFixed(2) : tl ? +(S.sb.oz + S.sb.dz - elev(S.x, S.y)).toFixed(3) : 0); RX.rec.a.push(S.aloft ? +S.airGu.toFixed(3) : 0);   // (its air time: height over the ground and the body's slope)
   }
   if (RX.done === null && RX.prog >= RX.target) return finishEvent();
   if (RX.t - RX.uiAt > 0.2) { RX.uiAt = RX.t; renderEventHud(); }
@@ -12385,7 +12483,7 @@ function addEventItems(items, dist) {
   // The ghost: the recorded car, see-through, where it was at this moment of its run
   if (RX.ghost) {
     const g = ghostPose(RX.ghost, Math.max(0, RX.t)), d = dist(g.x, g.y);
-    if (d < 350 && d > 1.5 && !hiddenByTerrain(g.x, g.y)) glcItem(items, d, g.x, g.y, () => { const a = ctx.globalAlpha; ctx.globalAlpha = 0.42; RIDE = g.hz > 0.02 ? {oz: elev(g.x, g.y) + Math.max(0, g.hz), gu: g.gu, gv: 0} : null; drawOther(RX.ghost.car, g.x, g.y, g.h, RX.ghost.paint || CARS[RX.ghost.car].paint); RIDE = null; ctx.globalAlpha = a; });
+    if (d < 350 && d > 1.5 && !hiddenByTerrain(g.x, g.y)) glcItem(items, d, g.x, g.y, () => { const a = ctx.globalAlpha; ctx.globalAlpha = 0.42; RIDE = g.tilt ? {oz: elev(g.x, g.y) + g.hz, gu: 0, gv: 0, tilt: g.tilt, tv: g.tv} : g.hz > 0.02 ? {oz: elev(g.x, g.y) + Math.max(0, g.hz), gu: g.gu, gv: 0} : null; drawOther(RX.ghost.car, g.x, g.y, g.h, RX.ghost.paint || CARS[RX.ghost.car].paint); RIDE = null; ctx.globalAlpha = a; });
   }
   // Gate posts either side of each checkpoint, with a flag on top: yellow for the next one, gray for the rest
   if (RX.cps) RX.cps.forEach((cu, k) => {
