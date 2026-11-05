@@ -4838,14 +4838,15 @@ function showcaseCam(dt = 0) {
 }
 // Draw a model at a set position without moving the real truck
 function drawPosed(fn, x, y, h) { const sx = S.x, sy = S.y, sh = S.h; S.x = x; S.y = y; S.h = h; fn(); S.x = sx; S.y = sy; S.h = sh; }
+const CAM_TILT = 1.4;   // how much more the view pitches than the slope itself: a hill is felt, not just seen
 function setCam(dt = 0) {
   F = VH * 0.9;
   if (SHOWCASE) { showcaseCam(dt); return; }
-  // The view tilts with the slope, but gently: the grade over the length of the car, eased and limited, so the whole
+  // The view tilts with the slope (CAM_TILT times it, and the chase camera sinks on a climb and rises on a drop): the grade over the length of the car, eased and limited, so the whole
   // picture does not leap up and down at every ledge and bump. (Tilting is only a shift of the picture, which starts to
   // look warped at big angles.) The cockpit follows sooner than the chase camera.
   const cg = Math.cos(S.h), sg = Math.sin(S.h), gRaw = (elev(S.x + cg * 4, S.y + sg * 4) - elev(S.x - cg * 4, S.y - sg * 4)) / 8;
-  const gAim = VIEW !== 'chase' && S.sb ? clamp(S.sb.gu, -0.4, 0.4) : clamp(gRaw, -0.26, 0.26), kg = dt > 0 ? 1 - Math.exp(-dt / (VIEW === 'chase' ? 0.55 : 0.22)) : 1;
+  const gAim = VIEW !== 'chase' && S.sb ? clamp(S.sb.gu, -0.4, 0.4) : clamp(gRaw, -0.3, 0.3), kg = dt > 0 ? 1 - Math.exp(-dt / (VIEW === 'chase' ? 0.32 : 0.2)) : 1;
   S.camG = S.camG === undefined ? gAim : S.camG + (gAim - S.camG) * kg;
   const g = S.camG;
   if (VIEW === 'chase') {
@@ -4858,8 +4859,8 @@ function setCam(dt = 0) {
     const rough = onDirt() && !S.hz ? clamp(Math.abs(S.v) / 16, 0, 1.3) : 0;   // a little bounce over rough ground
     const kz = dt > 0 ? 1 - Math.exp(-dt / 0.14) : 1, gz = S.sb ? S.sb.oz : elev(S.x, S.y);   // (its height eases too, over a ledge, and rises with a jump)
     camS.z = camS.z === undefined ? gz : camS.z + (gz - camS.z) * kz;
-    CAMX = camS.x; CAMY = camS.y; CAMYAW = camS.yaw; CAMZ = camS.z + 3.2 + rough * (0.03 * Math.sin(S.t * 2 * Math.PI * 5.3) + 0.02 * (Math.random() - 0.5));
-    HOR = VH * 0.36 + Math.atan(g) * F;
+    CAMX = camS.x; CAMY = camS.y; CAMYAW = camS.yaw; CAMZ = camS.z + 3.2 - g * 4 + rough * (0.03 * Math.sin(S.t * 2 * Math.PI * 5.3) + 0.02 * (Math.random() - 0.5));
+    HOR = VH * 0.36 + Math.atan(g * CAM_TILT) * F;
   } else {
     camS = null;
     if (has3dCab()) {
@@ -4889,13 +4890,13 @@ function setCam(dt = 0) {
       const e = eyePos(), c = Math.cos(S.h), sn = Math.sin(S.h);
       CAMX = S.x + c * e.u - sn * e.v; CAMY = S.y + sn * e.u + c * e.v; CAMYAW = S.h;
       CAMZ = (S.sb ? S.sb.oz : elev(S.x, S.y) + (S.hz || 0)) + e.z;   // (the eye rides in the body)
-      HOR = VH * cabSpec(CFG.body).hor + Math.atan(g) * F + S.pitch * F;
+      HOR = VH * cabSpec(CFG.body).hor + Math.atan(g * CAM_TILT) * F + S.pitch * F;
       return;
     }
     // The driver sits 0.38 m left of the center line
     CAMX = S.x + Math.sin(S.h) * 0.38; CAMY = S.y - Math.cos(S.h) * 0.38; CAMYAW = S.h;
     CAMZ = (S.sb ? S.sb.oz : elev(S.x, S.y) + (S.hz || 0)) + (CFG.eyeH || CAM_H);
-    HOR = VH * (CFG.eyeHor || 0.46) + Math.atan(g) * F + S.pitch * F;
+    HOR = VH * (CFG.eyeHor || 0.46) + Math.atan(g * CAM_TILT) * F + S.pitch * F;
   }
 }
 // Low graphics: draw at one canvas pixel per screen point (on a high-density screen that is a quarter of the pixels)
