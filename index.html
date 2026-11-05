@@ -1825,7 +1825,7 @@ Object.assign(CARS, {
     short: 'ATC110', year: 1981, drive: 'rear', mass: 177, r: 0.27, fd: 14.6, gears: [3.18, 1.88, 1.35, 1.09], rev: 3.18, gate: 'seq4',
     hp: 7, hpRpm: 7500, peakTq: 7.6, tqPeak: 5500, idle: 1600, redline: 9000, gaugeMax: 10000, wb: 1.15, front: 0.35, cyl: 1, inertia: 8,
     grip: [0.55, 0.85], balance: 0.65, eyeH: 1.35, eyeHor: 0.42, paint: '#c4161c', lowFrac: 0.6, cgH: 0.4, dragMul: 6, idleTq: 0,
-    autoClutch: true, sequential: true, noReverse: true, offGrip: 0.95, offDrag: 0.3, overRev: 3, trikeTips: true, tipAccel: 9.2,
+    autoClutch: true, sequential: true, noReverse: true, offGrip: 0.95, offDrag: 0.3, overRev: 3, trikeTips: true, tipAccel: 9.2, wheelieA: 3.2,
     engine: '105cc single, air-cooled: 7 hp at 7,500 rpm, 7.6 Nm at 5,500 rpm', note: 'Auto clutch, foot shifter, no reverse. Floats over grass and dirt; tips over if you look at it wrong',
     blurb: 'A 1981 Honda ATC110: the three-wheeler every farm kid wanted. Balloon tires, a pull-start and a foot shift with no clutch lever.',
     rider: {hat: '#d8d4c8', top: '#2c4a7a', legs: '#3a4f6e', hands: '#1a1a1a'},
@@ -1846,7 +1846,7 @@ Object.assign(CARS, {
     short: 'CR250R', year: 2002, drive: 'rear', mass: 172, r: 0.33, fd: 9.7, gears: [1.93, 1.56, 1.29, 1.09, 0.92], rev: 3, gate: 'seq5',
     hp: 46, hpRpm: 8000, peakTq: 41, tqPeak: 7000, idle: 1500, redline: 9000, gaugeMax: 11000, wb: 1.46, front: 0.42, cyl: 1, inertia: 8,
     grip: [0.6, 0.95], balance: 0.72, eyeH: 1.6, eyeHor: 0.42, paint: '#d3121a', lowFrac: 0.35, cgH: 0.55, dragMul: 3, idleTq: 0,
-    sequential: true, noReverse: true, offGrip: 0.98, offDrag: 0.25, trikeTips: true, tipAccel: 9,
+    sequential: true, noReverse: true, offGrip: 0.98, offDrag: 0.25, trikeTips: true, tipAccel: 9, wheelieA: 5.5,
     engine: '249cc two-stroke single, liquid-cooled: 46 hp at 8,000 rpm, 41 Nm at 7,000 rpm', note: 'Nothing, nothing, then all of it at once. A real clutch and a foot shifter, one click at a time. Leans into turns; ask too much of the tires and you are on the ground',
     blurb: 'A 2002 Honda CR250R: an aluminum-framed motocross bike with a ring-ding two-stroke, no lights and no manners.',
     rider: {hat: '#f0efe8', top: '#d3121a', legs: '#23262c', hands: '#161616'},
@@ -1869,7 +1869,7 @@ Object.assign(CARS, {
     short: 'Mazda-Go', year: 1931, drive: 'rear', mass: 520, r: 0.33, fd: 7.3, gears: [3.1, 1.75, 1.0], rev: 3.5, gate: 'h3',
     hp: 10, hpRpm: 3200, peakTq: 26, tqPeak: 2000, idle: 700, redline: 3800, gaugeMax: 5000, wb: 1.9, front: 0.3, cyl: 1, inertia: 2.5,
     grip: [0.48, 0.8], balance: 0.6, eyeH: 1.55, eyeHor: 0.42, paint: '#2a3550', lowFrac: 0.7, cgH: 0.5, dragMul: 3, idleTq: 0.35,
-    offGrip: 0.85, offDrag: 0.6, trikeTips: true, tipAccel: 8.0,
+    offGrip: 0.85, offDrag: 0.6, trikeTips: true, tipAccel: 8.0, wheelieA: 2.2,
     engine: '482cc single, air-cooled: 10 hp at 3,200 rpm, 26 Nm at 2,000 rpm', note: 'The first Mazda. A motorcycle that carries 400 kg. Slow, loud and proud',
     blurb: 'A 1931 Mazda-Go DA: the three-wheeled truck Toyo Kogyo built before it ever made a car. Handlebars, a saddle, a wooden bed and a thumping single.',
     rider: {hat: '#4a3b2a', top: '#5a4a36', legs: '#2e2a26', hands: '#c9a27a'},
@@ -3998,8 +3998,35 @@ function rollSpeedMul(v) {
 // The angle the body really shows (radians, + rolled to the right) for a gauge reading: on its tires to 10 degrees at the
 // amber line, then quickly up on two wheels to 30 at the red line
 function leanOf(roll) { const g = Math.abs(roll); return -Math.sign(roll) * (g <= ROLL_WARN ? g * 0.5 : 10 + (g - ROLL_WARN) * 2) * Math.PI / 180; }
+// Wheelies. S.wh is the body's angle up off its rear wheels (radians). Acceleration past the machine's CFG.wheelieA lifts the
+// nose toward an angle set by how far past it is (the rider's weight holds it there, as a spring that can overshoot), so
+// the throttle sets the height and the acceleration fading with speed, a shift, lifting off or the brake brings it down.
+// Past WH_LOOP it has gone over backward: it falls as a rollover.
+const WH_LOOP = 1.3;
+function wheelieStep(dt) {
+  if (!CFG.wheelieA) return;
+  S.whV = S.whV || 0; S.wh = S.wh || 0;
+  if (S.aloft) S.whV *= 1 - Math.min(1, dt * 0.5);
+  else {
+    const M = clamp(S.ax / CFG.wheelieA, -2, 2.5) - (S.brake || 0) * 1.5, aim = Math.max(0, M - 1) * 1.6;
+    if (S.wh > 0 || M > 1) S.whV += (13 * (aim - S.wh) - 4 * S.whV) * dt;
+  }
+  S.wh += S.whV * dt;
+  if (S.wh <= 0) {
+    if (S.whV < -1.2 && !S.aloft) { sfx('clunk'); if (S.sb) S.sb.pv = (S.sb.pv || 0) + S.whV * 0.25; }   // the front wheel comes down
+    S.wh = 0; S.whV = 0;
+  }
+  if (S.wh > 0.12 && !S.whTold) { S.whTold = true; log('Wheelie! Feather the throttle: too much and it goes over backward.', 'warn'); }
+  if (S.sb) S.sb.wh = S.wh;
+  if (S.wh > WH_LOOP && !S.aloft) {
+    S.whV = 0; startTip(Math.random() < 0.5 ? -1 : 1);
+    if (S.tip) { S.tip.w *= 2.5; log('Looped it!', 'bad'); }
+  }
+}
 function trikeStep(dt) {
   if (!CFG.trikeTips || S.tip) return;   // (tipStep has it during a rollover)
+  wheelieStep(dt);
+  if (S.tip) return;
   if (CARS[CFG.body].shape.bike) {   // two wheels: it leans INTO a turn by exactly what balances it, on its contact patches
     const ay = S.aloft ? 0 : S.v * S.r, lean = Math.atan(ay / 9.81) * 180 / Math.PI;
     S.roll = (S.roll || 0) + (lean - (S.roll || 0)) * Math.min(1, dt * 7);
@@ -4019,7 +4046,6 @@ function trikeStep(dt) {
   if (Math.abs(S.roll) > ROLL_WARN && v > 4 && S.t - (S.tipWarnAt ?? -9) > 3) { S.tipWarnAt = S.t; log('Up on two wheels! Lean into the turn and ease off.', 'warn'); }
   if (Math.abs(S.roll) > ROLL_TIP && !S.aloft) startTip(-Math.sign(S.roll));
   if (CFG.body !== 'atc110') return;
-  if (S.gear === 1 && S.thr > 0.8 && S.ax > 2.2 && S.t - (S.wheelieAt ?? -9) > 5) { S.wheelieAt = S.t; log('Front wheel lifting! Weight forward over the bars.', 'warn'); }
   if (onDirt() && v > 3 && !S.dirtTold) { S.dirtTold = true; log('Off the road: the balloon tires love it out here.', 'ok'); }
 }
 // The roll inclinometer, top center in either camera: a dial from 60 degrees left to 60 right with green, amber
@@ -4161,6 +4187,7 @@ function tipStep(dt) {
   S.ww = S.v;
   rideStep(dt);
   const B = S.sb;
+  S.wh = (S.wh || 0) * (1 - Math.min(1, dt * 2.5)); S.whV = 0; B.wh = S.wh;   // (out of a wheelie, the nose drops as it falls)
   B.tilt = T.a; B.tv = -T.cg * Math.sin(T.a); B.dz = gz + T.h - T.cg * Math.cos(T.a) - B.oz;
   S.roll = -wrapA(T.a) * 180 / Math.PI;   // (the inclinometer follows it round)
   if (T.phase === 'rise' && T.p >= 1) {
@@ -4307,7 +4334,7 @@ function physics(dt) {
   }
   // Three-wheelers have a very short wheelbase, so the same bar angle turns them far harder than a car: at speed the bars
   // turn slower and less far (half by 22 mph), so a tap of the key is a nudge, not a lunge past the tires' grip
-  const tk = CFG.trikeTips ? 1 / (1 + Math.abs(S.v) / 10) : 1;
+  const tk = CFG.trikeTips ? (S.wh > 0.06 ? 0.3 : 1) / (1 + Math.abs(S.v) / 10) : 1;   // (front wheel up: hardly any steering)
   S.steer = approach(S.steer, stT * 0.5 * tk, dt * 1.4 * DS('steerRate') * tk);
   S.fade = clamp(S.fade + dt * (S.brake * 0.15 - 0.05), 0, 1);
 
@@ -4926,6 +4953,11 @@ function setCam(dt = 0) {
       CAMX = S.x + c * e.u - sn * e.v; CAMY = S.y + sn * e.u + c * e.v; CAMYAW = S.h;
       CAMZ = (S.sb ? S.sb.oz : elev(S.x, S.y) + (S.hz || 0)) + e.z;   // (the eye rides in the body)
       HOR = VH * cabSpec(CFG.body).hor + Math.atan(g * CAM_TILT) * F + S.pitch * F;
+      if (S.wh > 0) {   // a wheelie: the eye swings up and back about the rear wheels, and the view looks at the sky
+        const W = S.wh, du = e.u - Math.min(...CARS[CFG.body].shape.axles), back = du * (1 - Math.cos(W)) + e.z * Math.sin(W);
+        CAMX -= c * back; CAMY -= sn * back; CAMZ += du * Math.sin(W) + e.z * (Math.cos(W) - 1);
+        HOR += Math.tan(Math.min(W, 0.8)) * F;
+      }
       return;
     }
     // The driver sits 0.38 m left of the center line
@@ -6024,12 +6056,18 @@ let RIDE = null;   // the body's own height and angles, for a vehicle on springs
 function rigidPlane(b) {
   const C = CARS[b] || {}, c = Math.cos(S.h), s = Math.sin(S.h), P = RIDE || groundPlane(b), gu = P.gu, gv = P.gv, oz0 = P.oz, tv = C.travel || [0.14, 0.2];
   // Forward along the slope; right square to it, along the side slope; up square to both
-  const fl = Math.hypot(1, gu), fx = c / fl, fy = s / fl, fz = gu / fl, d = -s * fx + c * fy + gv * fz;
+  const fl = Math.hypot(1, gu); let fx = c / fl, fy = s / fl, fz = gu / fl; const d = -s * fx + c * fy + gv * fz;
   let rx = -s - d * fx, ry = c - d * fy, rz = gv - d * fz; const rl = Math.hypot(rx, ry, rz); rx /= rl; ry /= rl; rz /= rl;
   let ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx, ox = S.x, oy = S.y, oz = oz0, tb = tv[0], td = tv[1], under = false;
+  if (P.wh) {   // a wheelie: turned about the rear wheels' contact with the ground
+    const W = P.wh, ca = Math.cos(W), sa = Math.sin(W), sh = C.shape || C.sideShape, uR = sh && sh.axles ? Math.min(...sh.axles) : -1.3, k = clamp((0.16 - W) / 0.12, 0, 1);
+    const f2 = [ca * fx + sa * ux, ca * fy + sa * uy, ca * fz + sa * uz], u2 = [ca * ux - sa * fx, ca * uy - sa * fy, ca * uz - sa * fz];
+    ox += uR * (fx - f2[0]); oy += uR * (fy - f2[1]); oz += uR * (fz - f2[2]); tb *= k; td *= k; under = W > 0.35;
+    [fx, fy, fz] = f2; [ux, uy, uz] = u2;
+  }
   if (P.tilt) {   // rolled about its length (a three-wheeler leaning or going over): any angle, all the way round. The wheels stop following the ground.
     const A = P.tilt, ca = Math.cos(A), sa = Math.sin(A), t = P.tv || 0, k = clamp((0.16 - Math.abs(A)) / 0.12, 0, 1);   // (past a few degrees the inside wheel leaves the ground with the body)
-    ox += rx * t; oy += ry * t; oz += P.dz || 0; tb *= k; td *= k; under = Math.abs(A) > 0.35;
+    ox += rx * t; oy += ry * t; oz += P.dz || 0; tb *= k; td *= k; under = under || Math.abs(A) > 0.35;
     const r2 = [ca * rx - sa * ux, ca * ry - sa * uy, ca * rz - sa * uz], u2 = [sa * rx + ca * ux, sa * ry + ca * uy, sa * rz + ca * uz];
     [rx, ry, rz] = r2; [ux, uy, uz] = u2;
   }
@@ -10183,7 +10221,7 @@ function applyCarDefaults(id, eng) {
   // The car with its engine (a swapped one if fitted). Settings only some cars have go back to their defaults first,
   // so nothing carries over from the last car.
   const C = effCar(id, eng);
-  Object.assign(CFG, {travel: null, lowRange: null, lowOn: false, snowBase: null, wade: null, fuel: null, abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
+  Object.assign(CFG, {travel: null, lowRange: null, lowOn: false, snowBase: null, wade: null, fuel: null, abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, wheelieA: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
   CFG.engineKey = eng && ENGINES[eng] ? eng : id;
   if (!CFG.tank) CFG.tank = tankFor(id);
   CFG.redZone = C.redline;   // the tach's red zone: the factory redline, whatever the tune does to the limiter
@@ -11562,6 +11600,7 @@ function ghostPose(g, t) {
   if (n < 1) return {x: g.x[0], y: g.y[0], h: g.h[0], hz: 0, gu: 0};
   // (both ends in the air, so a ghost does not smear its way up from the ground)
   const air = g.z && g.a && g.z[i] > 0.02 ? {hz: g.z[i] + (g.z[i + 1] - g.z[i]) * k, gu: g.a[i] + (g.a[i + 1] - g.a[i]) * (g.z[i + 1] > 0 ? k : 0)} : {hz: 0, gu: 0};
+  if (g.w && (g.w[i] || g.w[i + 1])) air.wh = g.w[i] + (g.w[i + 1] - g.w[i]) * k;
   if (g.l && g.t && g.z && (g.l[i] || g.l[i + 1])) Object.assign(air, {hz: g.z[i] + (g.z[i + 1] - g.z[i]) * k, gu: 0, tilt: g.l[i] + wrapA(g.l[i + 1] - g.l[i]) * k || 1e-6, tv: g.t[i] + (g.t[i + 1] - g.t[i]) * k});
   return Object.assign({x: g.x[i] + (g.x[i + 1] - g.x[i]) * k, y: g.y[i] + (g.y[i + 1] - g.y[i]) * k, h: g.h[i] + wrapA(g.h[i + 1] - g.h[i]) * k}, air);
 }
@@ -11588,7 +11627,7 @@ function finishTimedRun() {
   const ev = RX.ev, laps = RX.lapTimes.map((t, k) => t - (k ? RX.lapTimes[k - 1] : 0)), g = RX.ghost;
   LAST_RUN = {format: 'pickup-trial-ghost', v: 1, date: new Date().toISOString().slice(0, 10), driver: (SETTINGS.driverName || '').slice(0, 24),
     car: TT_USED.id, mods: TT_USED.mods, paint: CFG.paint, map: ev.map, laps: ev.laps, rain: ev.rain || 0, tod: ev.tod || 'day', time: +RX.done.toFixed(3), lapTimes: laps.map(t => +t.toFixed(3)),
-    jump: RX.jump, pen: +(RX.pen || 0).toFixed(2), dt: GHOST_DT, x: RX.rec.x, y: RX.rec.y, h: RX.rec.h, p: RX.rec.p, z: RX.rec.z, a: RX.rec.a, l: RX.rec.l.length ? RX.rec.l : undefined, t: RX.rec.t.length ? RX.rec.t : undefined};
+    jump: RX.jump, pen: +(RX.pen || 0).toFixed(2), dt: GHOST_DT, x: RX.rec.x, y: RX.rec.y, h: RX.rec.h, p: RX.rec.p, z: RX.rec.z, a: RX.rec.a, l: RX.rec.l.length ? RX.rec.l : undefined, t: RX.rec.t.length ? RX.rec.t : undefined, w: RX.rec.w.length ? RX.rec.w : undefined};
   const gl = g ? g.lapTimes : null;
   const rows = laps.map((t, k) => `<tr><td>Lap ${k + 1}</td><td style="text-align:right">${fmtRun(t)}</td>${gl ? `<td style="text-align:right;color:var(--dim)">${gl[k] !== undefined ? fmtRun(gl[k]) : ''}</td><td style="text-align:right;color:${gl[k] !== undefined && t <= gl[k] ? 'var(--ok)' : 'var(--bad)'}">${gl[k] !== undefined ? (t <= gl[k] ? '−' : '+') + Math.abs(t - gl[k]).toFixed(2) : ''}</td>` : ''}</tr>`).join('');
   const verdict = g ? (RX.done < g.time ? `<p style="color:var(--ok)"><b>You beat the ghost by ${(g.time - RX.done).toFixed(2)} s!</b></p>` : `<p style="color:var(--bad)"><b>The ghost wins by ${(RX.done - g.time).toFixed(2)} s.</b></p>`) : '';
@@ -11638,7 +11677,7 @@ function readGhost(text) {
     lapTimes: (o.lapTimes || []).filter(t => typeof t === 'number'), driver: typeof o.driver === 'string' ? o.driver.slice(0, 24) : '', date: typeof o.date === 'string' ? o.date.slice(0, 10) : '',
     dt: o.dt > 0.01 && o.dt < 1 ? o.dt : GHOST_DT, x: o.x, y: o.y, h: o.h, p: o.p,
     z: num(o.z) && o.z.length === o.x.length ? o.z : null, a: num(o.a) && o.a.length === o.x.length ? o.a : null,
-    l: num(o.l) && o.l.length === o.x.length ? o.l : null, t: num(o.t) && o.t.length === o.x.length ? o.t : null};   // (older ghosts have no air time: they stay on the ground)
+    l: num(o.l) && o.l.length === o.x.length ? o.l : null, t: num(o.t) && o.t.length === o.x.length ? o.t : null, w: num(o.w) && o.w.length === o.x.length ? o.w : null};   // (older ghosts have no air time: they stay on the ground)
 }
 function renderGhostInfo(err) {
   const box = $('ghostInfo');
@@ -12262,7 +12301,7 @@ function startEvent(i) {
   }
   Object.assign(S, {x: RX.grid.x, y: RX.grid.y, h: RX.grid.h});
   RX.lastU = strip ? 0 : nearestArc(S.x, S.y);
-  if (ev.ghostRun) { RX.rec = {x: [], y: [], h: [], p: [], z: [], a: [], l: [], t: []}; RX.lapTimes = []; RX.ghost = GHOST_RACE ? GHOST : null; }
+  if (ev.ghostRun) { RX.rec = {x: [], y: [], h: [], p: [], z: [], a: [], l: [], t: [], w: []}; RX.lapTimes = []; RX.ghost = GHOST_RACE ? GHOST : null; }
   $('checkT').textContent = ev.series.name; $('checkX').innerHTML = ''; $('check').hidden = false;
   renderEventHud();
   $('overlay').querySelector('.lbl').textContent = ev.series.name;
@@ -12369,7 +12408,7 @@ function eventTick(dt) {
   if (RX.rec && RX.t >= 0 && RX.done === null) while (RX.rec.x.length * GHOST_DT <= RX.t) {
     RX.rec.x.push(+S.x.toFixed(2)); RX.rec.y.push(+S.y.toFixed(2)); RX.rec.h.push(+S.h.toFixed(3)); RX.rec.p.push(+RX.prog.toFixed(1));
     const tl = CFG.trikeTips && S.sb && S.sb.tilt || 0;
-    if (CFG.trikeTips) { RX.rec.l.push(+wrapA(tl).toFixed(3)); RX.rec.t.push(tl ? +S.sb.tv.toFixed(3) : 0); }   // (a three-wheeler's lean and rollovers)
+    if (CFG.trikeTips) { RX.rec.l.push(+wrapA(tl).toFixed(3)); RX.rec.t.push(tl ? +S.sb.tv.toFixed(3) : 0); RX.rec.w.push(+(S.wh || 0).toFixed(3)); }   // (a three-wheeler's lean and rollovers)
     RX.rec.z.push(S.aloft ? +S.hz.toFixed(2) : tl ? +(S.sb.oz + S.sb.dz - elev(S.x, S.y)).toFixed(3) : 0); RX.rec.a.push(S.aloft ? +S.airGu.toFixed(3) : 0);   // (its air time: height over the ground and the body's slope)
   }
   if (RX.done === null && RX.prog >= RX.target) return finishEvent();
@@ -12553,7 +12592,7 @@ function addEventItems(items, dist) {
   // The ghost: the recorded car, see-through, where it was at this moment of its run
   if (RX.ghost) {
     const g = ghostPose(RX.ghost, Math.max(0, RX.t)), d = dist(g.x, g.y);
-    if (d < 350 && d > 1.5 && !hiddenByTerrain(g.x, g.y)) glcItem(items, d, g.x, g.y, () => { const a = ctx.globalAlpha; ctx.globalAlpha = 0.42; RIDE = g.tilt ? {oz: elev(g.x, g.y) + g.hz, gu: 0, gv: 0, tilt: g.tilt, tv: g.tv} : g.hz > 0.02 ? {oz: elev(g.x, g.y) + Math.max(0, g.hz), gu: g.gu, gv: 0} : null; drawOther(RX.ghost.car, g.x, g.y, g.h, RX.ghost.paint || CARS[RX.ghost.car].paint); RIDE = null; ctx.globalAlpha = a; });
+    if (d < 350 && d > 1.5 && !hiddenByTerrain(g.x, g.y)) glcItem(items, d, g.x, g.y, () => { const a = ctx.globalAlpha; ctx.globalAlpha = 0.42; RIDE = g.tilt || g.wh ? {oz: elev(g.x, g.y) + g.hz, gu: g.gu || 0, gv: 0, tilt: g.tilt || 0, tv: g.tv || 0, wh: g.wh || 0} : g.hz > 0.02 ? {oz: elev(g.x, g.y) + Math.max(0, g.hz), gu: g.gu, gv: 0} : null; drawOther(RX.ghost.car, g.x, g.y, g.h, RX.ghost.paint || CARS[RX.ghost.car].paint); RIDE = null; ctx.globalAlpha = a; });
   }
   // Gate posts either side of each checkpoint, with a flag on top: yellow for the next one, gray for the rest
   if (RX.cps) RX.cps.forEach((cu, k) => {
