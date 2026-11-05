@@ -1530,7 +1530,7 @@ Object.assign(CARS, {
   pickup4x4: rosterCar('pickup4x4', {
     short: 'Pickup 4x4 (built)', year: 1990, drive: 'awd', awdFront: 0.5, mass: 1720, r: 0.42, fd: 4.88, gears: [3.954, 2.141, 1.384, 1.0, 0.85], rev: 4.22, lowRange: 2.28,
     hp: 135, hpRpm: 4800, peakTq: 215, tqPeak: 3200, idle: 750, redline: 5200, gaugeMax: 7000, wb: 2.8, front: 0.54, cyl: 4, inertia: 3, lowFrac: 0.78, idleTq: 0.38,
-    grip: [0.66, 0.82], eyeH: 2.05, eyeHor: 0.47, paint: '#a8362a', cgH: 0.95, dragMul: 1.75, offGrip: 0.98, offDrag: 0.3, snowBase: 0.72, wetGrip: 0.75, wade: 1.9,
+    grip: [0.66, 0.82], eyeH: 2.05, eyeHor: 0.47, paint: '#a8362a', cgH: 0.95, dragMul: 1.75, offGrip: 0.98, offDrag: 0.3, snowBase: 0.72, wetGrip: 0.75, wade: 1.9, travel: [0.34, 0.42],
     engine: '22R-E 2.4 fuel-injected, built: 135 hp at 4,800 rpm, 215 Nm at 3,200 rpm (116 hp stock)', note: '33s, long travel, 4.88s and low range. Press {k:h} to shift the transfer case, stopped or with the clutch in',
     blurb: 'A 1990 Toyota Pickup 4x4 with the fuel-injected 22R-E and everything bolted to it: long-travel lift, 33s, a winch, a snorkel and a light bar. Press {k:h} for low range. Slow on the road and unstoppable off it.',
     shape: (() => {
@@ -2718,7 +2718,12 @@ function initAudio() {
     const rtDepth = c.createGain(); rtDepth.gain.value = 0;
     noise.connect(rtBP); rtBP.connect(rtG); rtG.connect(master); rtGate.connect(rtDepth); rtDepth.connect(rtG.gain); rtGate.start();
     [saw, sq, noise, st, stChug, lope, tickGate, tw, tw2, scO].forEach(n => n.start());
-    AU = {c, master, lp, eng, saw, sq, sawG, sqG, pk1, pk2, nbp, nG, st, stG, stDepth, stW, stWG, stChug, lfo, lope, lopeG, tickG, tickGate, tickDepth, tickHP, tw, twG, twNG, tw2, tw2G, grind, scO, scO2, scBP, scG, scN, scNG, drive, wet, sub, subG, rtBP, rtG, rtGate, rtDepth, imaO, imaG, firing, nosG, rainG, skid, gravBP, gravG, cutPrev: false, lastPop: -1, lastGrade: 0};
+    // Driving through water: a slosh (low and wandering, what the wheels and body shove aside) and a hiss of spray on top
+    const washBP = c.createBiquadFilter(); washBP.type = 'bandpass'; washBP.frequency.value = 520; washBP.Q.value = 0.8;
+    const washG = c.createGain(); washG.gain.value = 0; noise.connect(washBP); washBP.connect(washG); washG.connect(master);
+    const sprayHP = c.createBiquadFilter(); sprayHP.type = 'highpass'; sprayHP.frequency.value = 3200;
+    const sprayG = c.createGain(); sprayG.gain.value = 0; noise.connect(sprayHP); sprayHP.connect(sprayG); sprayG.connect(master);
+    AU = {washBP, washG, sprayG, c, master, lp, eng, saw, sq, sawG, sqG, pk1, pk2, nbp, nG, st, stG, stDepth, stW, stWG, stChug, lfo, lope, lopeG, tickG, tickGate, tickDepth, tickHP, tw, twG, twNG, tw2, tw2G, grind, scO, scO2, scBP, scG, scN, scNG, drive, wet, sub, subG, rtBP, rtG, rtGate, rtDepth, imaO, imaG, firing, nosG, rainG, skid, gravBP, gravG, cutPrev: false, lastPop: -1, lastGrade: 0};
   } catch (err) { AU = null; }
 }
 // Engine voices. The 22R is a big, slow 2.4: a low gruff exhaust, a lumpy carbureted idle and a rattly timing chain,
@@ -2868,6 +2873,13 @@ function updateAudio() {
   AU.scNG.gain.setTargetAtTime(0.05 * scLoad, t, 0.05);
   const hiss = (S.nos || S.thrust || S.hover) && !S.finished && !PAUSED;   // physics stops at the finish and on pause, so the flag alone could stick; the Roadster's thrusters hiss too
   AU.nosG.gain.setTargetAtTime(hiss ? 0.07 : 0, t, hiss ? 0.02 : 0.06);   // nitrous hiss
+  {   // The water: louder with depth and speed, the slosh wandering in pitch and surging so it never settles into a steady hiss
+    const on = !SHOWCASE && !PAUSED && !S.finished && (S.water || 0) > 0.06 && S.hz < 0.05, w = on ? clamp(S.water / 0.45, 0, 1.3) * clamp(Math.abs(S.v) / 9, 0, 1.3) : 0;
+    AU.washWalk = clamp((AU.washWalk || 0) + (Math.random() - 0.5) * 0.25, -1, 1); AU.washSurge = clamp((AU.washSurge || 0) + (Math.random() - 0.5) * 0.2, 0.55, 1.15) || 0.8;
+    AU.washBP.frequency.setTargetAtTime(420 + 260 * AU.washWalk + 200 * clamp(Math.abs(S.v) / 15, 0, 1), t, 0.06);
+    AU.washG.gain.setTargetAtTime(0.3 * w * AU.washSurge, t, 0.05);
+    AU.sprayG.gain.setTargetAtTime(0.045 * w * clamp(Math.abs(S.v) / 14, 0.2, 1.2), t, 0.08);
+  }
   AU.rainG.gain.setTargetAtTime(S.rain && !SHOWCASE && !PAUSED && !S.finished ? (snowing() ? 0.008 : 0.035) * S.rain : 0, t, 0.3);   // rain (snow: just a hush)
   {
     // (a horse and a buggy have no tires to squeal, and no gravel crunch under them: their hooves make the sound)
@@ -3202,6 +3214,18 @@ function hoofbeats() {
 }
 function sfx(type, amount) {
   if (!AU) return;
+  if (type === 'splash') {   // a body hitting water: a deep whump, a slap of water thrown up, and then the drops falling back, each its own
+    const a = clamp(amount || 0.5, 0.1, 1), c = AU.c, t0 = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(95 + Math.random() * 30, t0); o.frequency.exponentialRampToValueAtTime(42, t0 + 0.28);
+    g.gain.setValueAtTime(0.2 * a, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.32);
+    o.connect(g); g.connect(AU.master); o.start(t0); o.stop(t0 + 0.34);
+    burst(0.28 + 0.2 * a, 340 + Math.random() * 160, 0.6, 0.55 * a, 'lowpass');
+    burst(0.22 + 0.25 * a, 900 + Math.random() * 700, 0.5, 0.48 * a);
+    burst(0.35 + 0.35 * a, 4200 + Math.random() * 1800, 0.5, 0.18 * a, 'highpass', 0.03);
+    const drops = Math.round(6 + a * 22);
+    for (let k = 0; k < drops; k++) burst(0.018 + Math.random() * 0.04, 1800 + Math.random() * 4800, 3 + Math.random() * 6, (0.16 + Math.random() * 0.36) * a, 'bandpass', 0.12 + Math.pow(Math.random(), 0.7) * (0.45 + 0.6 * a));
+    return;
+  }
   if (type === 'hoof' || type === 'neigh') {
     const c = AU.c, t0 = c.currentTime, out = c.createGain(); out.connect(AU.master);
     if (type === 'hoof') {
@@ -3671,7 +3695,7 @@ function nosTorque() {
 // reaches one is put back against it, the part of its speed going into the wall is taken away (it bounces off a little,
 // 25%), it scrapes along losing speed, its spin is damped, and a real hit thumps and dents a career car's body.
 function ovalWalls(dt) {
-  if (S.hz > 1.2) return;   // a flying Roadster clears them
+  if (S.hz > 1.2 && CFG.thrusters) return;   // a flying Roadster clears them
   const half = 0.95, w = ovalO(S.x, S.y), lim = w.o > 0 ? OV_OUTER - half : OV_INNER + half, over = w.o > 0 ? w.o - lim : lim - w.o;
   if (over <= 0) return;
   const nx = w.nx * (w.o > 0 ? 1 : -1), ny = w.ny * (w.o > 0 ? 1 : -1);   // the way into the wall
@@ -4002,6 +4026,66 @@ function drawRollGauge() {
   ctx.font = `${Math.round(r * 0.14)}px "IBM Plex Mono", monospace`; ctx.fillStyle = '#8c8170'; ctx.fillText('ROLL', cx, cy - r * 0.42);
   ctx.restore();
 }
+// Air time and suspension. The ground is only a height under the car, so leaving it is a matter of looking ahead: if a tenth
+// of a second from now the ground will be further below than gravity can pull the car (a lip, a crest), it is airborne,
+// with the climb it had. In the air S.zc is its real height, S.hz how far that is over the ground (which can fall away
+// faster than it falls), there is no grip, and the body keeps its own angle, the nose slowly dropping. Coming down, the
+// springs take it. S.sb is the body riding those springs: its height, pitch and roll chasing the ground under the wheels,
+// as a damped spring with bump stops, while the wheels stay on the ground within their travel (see rigidPlane, glcBox).
+function groundPlane(b) {
+  const C = CARS[b] || {}, sh = C.shape || C.sideShape, ax = sh && sh.axles, uF = ax ? Math.max(...ax) : 1.3, uR = ax ? Math.min(...ax) : -1.3, tr = (sh && sh.track) || 0.8;
+  const c = Math.cos(S.h), s = Math.sin(S.h), g = (u, v) => elev(S.x + c * u - s * v, S.y + s * u + c * v);
+  const ef = g(uF, 0), er = g(uR, 0), gu = (ef - er) / (uF - uR);
+  return {oz: er - uR * gu, gu, gv: (g(0, tr) - g(0, -tr)) / (2 * tr)};
+}
+function airStep(dt) {
+  const c = Math.cos(S.h), sn = Math.sin(S.h), wx = S.v * c - S.vy * sn, wy = S.v * sn + S.vy * c, gz = elev(S.x, S.y);
+  const vg = clamp((gz - (S.gzP ?? gz)) / dt, -30, 30);   // how fast the ground under the car is rising, smoothed over a few steps
+  S.gzP = gz; S.vgS = (S.vgS ?? vg) + (vg - (S.vgS ?? vg)) * Math.min(1, dt * 40);
+  if (S.hz > 0 || S.vz > 0) {
+    if (!S.aloft) { S.aloft = true; S.zc = gz + S.hz; S.airGu = S.sb ? S.sb.gu : 0; S.airRate = 0; }   // (a Roadster's hop)
+    S.vz -= 9.81 * dt; S.zc += S.vz * dt; S.hz = S.zc - gz; S.airGu += S.airRate * dt;
+    if (S.hz <= 0) landed(clamp(S.vgS - S.vz, 0, 30));
+  } else if (Math.hypot(wx, wy) > 6 && !S.hover) {
+    const za = elev(S.x + wx * 0.1, S.y + wy * 0.1);
+    if (za < gz + S.vgS * 0.1 - 0.049 - 0.06) {   // the ground drops away faster than gravity: off it goes
+      // (the springs soak up part of the kick, and no lip throws it faster than 6 m/s)
+      S.aloft = true; S.zc = gz + 0.001; S.hz = 0.001; S.vz = Math.min(6, S.vgS > 0 ? S.vgS * 0.75 : S.vgS); S.airGu = S.sb ? S.sb.gu : S.vgS / Math.max(6, Math.hypot(wx, wy));
+      S.airRate = -clamp(1.8 / Math.hypot(wx, wy), 0.04, 0.45);   // the front wheels leave first, so the nose tips down, slower the faster you go
+    }
+  }
+  rideStep(dt);
+}
+function landed(hit) {
+  S.hz = 0; S.vz = 0; S.aloft = false; S.emptyTold = false;
+  if (S.sb) S.sb.pv = (S.sb.pv || 0) - hit * 0.06;
+  S.bzv = (S.bzv || 0) - hit * 0.05;
+  S.pitchV -= hit * 0.03;
+  if (hit > 2) { sfx('clunk'); if (AU) burst(0.16, 95, 0.7, Math.min(1.1, hit * 0.1), 'lowpass'); }
+  if (hit > 9) { damageBody((hit - 9) * 1.2); if (hit > 12) log('Hard landing!', 'bad'); }
+  if (isTrailMap() && TRAIL_ZW - elev(S.x, S.y) > 0.05) { S.inWater = true; bigSplash(clamp(hit / 8, 0.35, 1), TRAIL_ZW - elev(S.x, S.y)); }   // down into a river
+  else if (onDirt() && hit > 1.5 && !SHOWCASE) for (let k = 0; k < Math.min(24, hit * 3); k++) { const a = Math.random() * 6.28; DUST.push({x: S.x + Math.cos(a) * 1.4, y: S.y + Math.sin(a) * 1.4, z: 0.15, vx: Math.cos(a) * (1 + Math.random() * 3), vy: Math.sin(a) * (1 + Math.random() * 3), vz: 0.5 + Math.random() * 1.5, life: 1}); }
+}
+// The body on its springs: stiffer with sport suspension, softer and longer on a car with its own CFG.travel
+function rideStep(dt) {
+  const T = groundPlane(CFG.body), tr = CFG.travel || [0.14, 0.2], soft = CFG.travel ? 0.55 : 1, sp = 1 / (CFG.suspPitch || 1);
+  if (!S.sb) S.sb = {oz: T.oz, zv: 0, gu: T.gu, pv: 0, gv: T.gv, rv: 0};
+  const B = S.sb;
+  if (S.aloft && S.hz > 0.02) {   // in the air it just flies, its wheels hanging
+    B.oz = S.zc; B.zv = S.vz; B.gu = S.airGu; B.pv = S.airRate; B.rv *= 1 - Math.min(1, dt * 2); B.gv += B.rv * dt; B.T = T;
+    return;
+  }
+  const k = 170 * soft * sp, d = 15.5 * Math.sqrt(soft * sp), kA = 210 * soft * sp, dA = 19 * Math.sqrt(soft * sp);
+  // (damped against how fast the ground itself is moving, or a long hill would leave the body riding high or low on it)
+  const P = B.T || T, vz = clamp((T.oz - P.oz) / dt, -30, 30), vp = clamp((T.gu - P.gu) / dt, -8, 8), vr = clamp((T.gv - P.gv) / dt, -8, 8);
+  B.T = T;
+  B.zv += (k * (T.oz - B.oz) - d * (B.zv - vz)) * dt; B.oz += B.zv * dt;
+  B.pv += (kA * (T.gu - B.gu) - dA * (B.pv - vp)) * dt; B.gu += B.pv * dt;
+  B.rv += (kA * (T.gv - B.gv) - dA * (B.rv - vr)) * dt; B.gv += B.rv * dt;
+  // The bump stops: it can only sink or lift so far, and only lean so far from the ground
+  if (B.oz < T.oz - tr[0]) { B.oz = T.oz - tr[0]; B.zv = Math.max(B.zv, 0); } else if (B.oz > T.oz + tr[1]) { B.oz = T.oz + tr[1]; B.zv = Math.min(B.zv, 0); }
+  const lean = tr[1] * 0.8; B.gu = clamp(B.gu, T.gu - lean, T.gu + lean); B.gv = clamp(B.gv, T.gv - lean, T.gv + lean);
+}
 function physics(dt) {
   S.t += dt;
   if (CFG.lowRange) lowRangeStep();
@@ -4255,7 +4339,7 @@ function physics(dt) {
   Fd += Fra;
   if (S.ww - S.v > 4 && !S.spin && !air && !CFG.horse) { S.spin = true; log('Wheelspin. Ease off the throttle.', 'warn'); }
   else if (S.ww - S.v < 1) S.spin = false;
-  const rolling = 0.15 + 0.00035 * (CFG.dragMul || 1) * S.v * S.v + (onDirt() ? (CFG.dirtDrag ?? 1.2) : 0) + (S.water ? S.water * (2.4 + 0.05 * S.v * S.v) : 0);   // (dragMul: slippery or brick-shaped; water drags hard, and harder the faster you push through it)
+  const rolling = 0.15 + 0.00035 * (CFG.dragMul || 1) * S.v * S.v + (onDirt() && !air ? (CFG.dirtDrag ?? 1.2) : 0) + (S.water && !air ? S.water * (2.4 + 0.05 * S.v * S.v) : 0);   // (dragMul: slippery or brick-shaped; water drags hard, and harder the faster you push through it)
   // The brakes stop the car as hard as the tires let them: 7.5 m/s/s on its stock tires, more with grippier tires or
   // stiffer suspension, less on worse ones (dirt tread on pavement)
   const gripB = (CFG.muF + CFG.muR) / (CFG.muBrake0 || CFG.muF + CFG.muR);
@@ -4377,13 +4461,10 @@ function physics(dt) {
     S.r += (S.steer * 1.6 - S.r) * Math.min(1, dt * 2.5);
     S.vy *= 1 - Math.min(1, dt * 1.5);
   }
-  if (S.hz > 0 || S.vz > 0) {
-    S.vz -= 9.81 * dt; S.hz += S.vz * dt;
-    if (S.hz <= 0) { const hit = -S.vz; S.hz = 0; S.vz = 0; S.emptyTold = false; if (hit > 2) { sfx('clunk'); S.pitchV -= hit * 0.03; } }
-  }
   // World velocity: forward along the heading plus sideways (right of the heading is +y)
   S.x += (Vx * Math.cos(S.h) - S.vy * Math.sin(S.h)) * dt;
   S.y += (Vx * Math.sin(S.h) + S.vy * Math.cos(S.h)) * dt;
+  airStep(dt);   // leaving the ground, flight and landing, and the body on its springs
 
   if (isOvalMap()) ovalWalls(dt);
   if (isNightMap()) nightWalls(dt);
@@ -4654,7 +4735,7 @@ function setCam(dt = 0) {
   // picture does not leap up and down at every ledge and bump. (Tilting is only a shift of the picture, which starts to
   // look warped at big angles.) The cockpit follows sooner than the chase camera.
   const cg = Math.cos(S.h), sg = Math.sin(S.h), gRaw = (elev(S.x + cg * 4, S.y + sg * 4) - elev(S.x - cg * 4, S.y - sg * 4)) / 8;
-  const gAim = clamp(gRaw, -0.26, 0.26), kg = dt > 0 ? 1 - Math.exp(-dt / (VIEW === 'chase' ? 0.55 : 0.22)) : 1;
+  const gAim = VIEW !== 'chase' && S.sb ? clamp(S.sb.gu, -0.4, 0.4) : clamp(gRaw, -0.26, 0.26), kg = dt > 0 ? 1 - Math.exp(-dt / (VIEW === 'chase' ? 0.55 : 0.22)) : 1;
   S.camG = S.camG === undefined ? gAim : S.camG + (gAim - S.camG) * kg;
   const g = S.camG;
   if (VIEW === 'chase') {
@@ -4665,9 +4746,9 @@ function setCam(dt = 0) {
     const tx = S.x - Math.cos(camS.yaw) * 9, ty = S.y - Math.sin(camS.yaw) * 9;
     camS.x += (tx - camS.x) * kp; camS.y += (ty - camS.y) * kp;
     const rough = onDirt() && !S.hz ? clamp(Math.abs(S.v) / 16, 0, 1.3) : 0;   // a little bounce over rough ground
-    const kz = dt > 0 ? 1 - Math.exp(-dt / 0.14) : 1, gz = elev(S.x, S.y);   // (its height eases too, over a ledge)
+    const kz = dt > 0 ? 1 - Math.exp(-dt / 0.14) : 1, gz = S.sb ? S.sb.oz : elev(S.x, S.y);   // (its height eases too, over a ledge, and rises with a jump)
     camS.z = camS.z === undefined ? gz : camS.z + (gz - camS.z) * kz;
-    CAMX = camS.x; CAMY = camS.y; CAMYAW = camS.yaw; CAMZ = camS.z + 3.2 + (S.hz || 0) * 0.8 + rough * (0.03 * Math.sin(S.t * 2 * Math.PI * 5.3) + 0.02 * (Math.random() - 0.5));
+    CAMX = camS.x; CAMY = camS.y; CAMYAW = camS.yaw; CAMZ = camS.z + 3.2 + rough * (0.03 * Math.sin(S.t * 2 * Math.PI * 5.3) + 0.02 * (Math.random() - 0.5));
     HOR = VH * 0.36 + Math.atan(g) * F;
   } else {
     camS = null;
@@ -4697,13 +4778,13 @@ function setCam(dt = 0) {
       SWAY.vb = on && rough ? (S.bl || 0) : 0;   // (kept apart from SWAY.v, which eases toward its own target)
       const e = eyePos(), c = Math.cos(S.h), sn = Math.sin(S.h);
       CAMX = S.x + c * e.u - sn * e.v; CAMY = S.y + sn * e.u + c * e.v; CAMYAW = S.h;
-      CAMZ = elev(S.x, S.y) + e.z + (S.hz || 0);
+      CAMZ = (S.sb ? S.sb.oz : elev(S.x, S.y) + (S.hz || 0)) + e.z;   // (the eye rides in the body)
       HOR = VH * cabSpec(CFG.body).hor + Math.atan(g) * F + S.pitch * F;
       return;
     }
     // The driver sits 0.38 m left of the center line
     CAMX = S.x + Math.sin(S.h) * 0.38; CAMY = S.y - Math.cos(S.h) * 0.38; CAMYAW = S.h;
-    CAMZ = elev(S.x, S.y) + (CFG.eyeH || CAM_H) + (S.hz || 0);
+    CAMZ = (S.sb ? S.sb.oz : elev(S.x, S.y) + (S.hz || 0)) + (CFG.eyeH || CAM_H);
     HOR = VH * (CFG.eyeHor || 0.46) + Math.atan(g) * F + S.pitch * F;
   }
 }
@@ -5547,13 +5628,16 @@ function drawBox(...a) {
   const near = Math.hypot(lu - clamp(lu, u0, u1), lv - clamp(lv, v0, v1), camZ - clamp(camZ, z0, z1));
   const d = QFIRST ? 1e9 : QKEY !== null ? QKEY + near : near;
   const pz = QFIRST ? 0 : BODY_PITCH;   // wheels stay put; the body pitches over them
-  MODEL_Q.push({d, run: () => { CUR_PITCH = pz; drawBoxNow(...a); CUR_PITCH = 0; }});
+  const wheel = QFIRST;
+  MODEL_Q.push({d, run: () => { CUR_PITCH = pz; CUR_WHEEL = wheel; drawBoxNow(...a); CUR_PITCH = 0; CUR_WHEEL = false; }});
 }
+let CUR_WHEEL = false;   // a wheel is being drawn: it stays on the ground within its travel while the body moves on its springs
+const wheelDz = (R, u0, u1, v0, v1) => { const q = rigidPt(R, (u0 + u1) / 2, (v0 + v1) / 2, 0); return clamp(elev(q[0], q[1]) - q[2], -R.td, R.tb); };
 let BODY_PITCH = 0, CUR_PITCH = 0;   // the player's body pitch while its model is queued, and while a box is drawn
 function drawBoxNow(cp, u0, u1, v0, v1, z0, z1, side, top, end, lamps) {
   if (GLC.rec) return glcBox(cp, u0, u1, v0, v1, z0, z1, side, top, end);   // (on the graphics chip: see GLC)
   const rx = -cp.hy, ry = cp.hx, pt = CUR_PITCH;
-  const R = RIGID, P = R ? (u, v, z) => { const q = rigidPt(R, u, v, z, pt); return projZ(q[0], q[1], q[2]); }
+  const R = RIGID, wdz = R && CUR_WHEEL ? wheelDz(R, u0, u1, v0, v1) : 0, P = R ? (u, v, z) => { const q = rigidPt(R, u, v, z, pt); return projZ(q[0], q[1], q[2] + wdz); }
     : (u, v, z) => proj(cp.x + cp.hx * u + rx * v, cp.y + cp.hy * u + ry * v, z + u * pt + LIFT);
   const ex = CAMX - cp.x, ey = CAMY - cp.y, ez = CAMZ - (R ? R.oz : elev(cp.x, cp.y));
   const cu = R ? ex * R.fx + ey * R.fy + ez * R.fz : ex * cp.hx + ey * cp.hy;
@@ -5789,14 +5873,13 @@ function drawShapeModelRaw(car) {
 // (the height at each axle sets the pitch, at each side the roll): forward, right and up axes square to each other, so
 // its uprights lean with the body and nothing stretches. Read by glcBox, drawBoxNow and drawCarLights through rigidPt.
 let RIGID = null;
+let RIDE = null;   // the body's own height and angles, for a vehicle on springs or in the air (S.sb, a ghost's pose)
 function rigidPlane(b) {
-  const C = CARS[b] || {}, sh = C.shape || C.sideShape, ax = sh && sh.axles, uF = ax ? Math.max(...ax) : 1.3, uR = ax ? Math.min(...ax) : -1.3, tr = (sh && sh.track) || 0.8;
-  const c = Math.cos(S.h), s = Math.sin(S.h), g = (u, v) => elev(S.x + c * u - s * v, S.y + s * u + c * v);
-  const ef = g(uF, 0), er = g(uR, 0), gu = (ef - er) / (uF - uR), gv = (g(0, tr) - g(0, -tr)) / (2 * tr);
+  const C = CARS[b] || {}, c = Math.cos(S.h), s = Math.sin(S.h), P = RIDE || groundPlane(b), gu = P.gu, gv = P.gv, oz0 = P.oz, tv = C.travel || [0.14, 0.2];
   // Forward along the slope; right square to it, along the side slope; up square to both
   const fl = Math.hypot(1, gu), fx = c / fl, fy = s / fl, fz = gu / fl, d = -s * fx + c * fy + gv * fz;
   let rx = -s - d * fx, ry = c - d * fy, rz = gv - d * fz; const rl = Math.hypot(rx, ry, rz); rx /= rl; ry /= rl; rz /= rl;
-  return {ox: S.x, oy: S.y, oz: er - uR * gu, fx, fy, fz, rx, ry, rz, ux: fy * rz - fz * ry, uy: fz * rx - fx * rz, uz: fx * ry - fy * rx};
+  return {ox: S.x, oy: S.y, oz: oz0, tb: tv[0], td: tv[1], fx, fy, fz, rx, ry, rz, ux: fy * rz - fz * ry, uy: fz * rx - fx * rz, uz: fx * ry - fy * rx};
 }
 // A point on the vehicle (forward, right, up from its center on the ground) in the world, with the body's own pitch on its
 // springs as a small rotation (so that too stays rigid)
@@ -5816,7 +5899,7 @@ function drawModelOf(b) {
   RIGID = null;
 }
 // The player's car from outside, whichever it is
-function drawPlayerCar() { BODY_PITCH = S.pitch; DRAW_PLAYER = true; LIFT = S.hz || 0; NIGHT_CAR = {brake: S.brake > 0.1}; drawModelOf(CFG.body); NIGHT_CAR = null; LIFT = 0; DRAW_PLAYER = false; BODY_PITCH = 0; }
+function drawPlayerCar() { BODY_PITCH = S.pitch; DRAW_PLAYER = true; LIFT = S.sb ? 0 : S.hz || 0; RIDE = S.sb || null; NIGHT_CAR = {brake: S.brake > 0.1}; drawModelOf(CFG.body); RIDE = null; NIGHT_CAR = null; LIFT = 0; DRAW_PLAYER = false; BODY_PITCH = 0; }
 let LIFT = 0;   // how high a hop has the player's car off the ground, while it is drawn
 // Another car (an AI racer) at a spot, in its own paint. The models read the paint and wheel size from the live
 // settings, so those are swapped in for the moment it is drawn.
@@ -5896,13 +5979,14 @@ function drawDust() {
   // On loose ground: dust from every wheel, thicker while sliding or spinning; and stones and clods flung back from the
   // driven wheels when they spin or the car slides
   const sliding = S.spin || S.lockF || S.lockR || (S.tireUse || 0) > 0.9 || Math.abs(Math.atan2(S.vy, Math.max(1, Math.abs(S.v)))) > 0.15;
-  if (onDirt() && Math.abs(S.v) > 2 && sliding && DUST.length < 380) for (const side of [-0.95, 0.95]) for (let n = 0; n < 2; n++) if (Math.random() < 0.6) {
+  const dry = !(S.water > 0.05);   // (a river throws up water, not dust)
+  if (dry && onDirt() && Math.abs(S.v) > 2 && sliding && DUST.length < 380) for (const side of [-0.95, 0.95]) for (let n = 0; n < 2; n++) if (Math.random() < 0.6) {
     const back = S.spin ? Math.max(4, S.ww - S.v) : Math.abs(S.v) * 0.3;
     DUST.push({x: S.x - c * 1.7 - s * side, y: S.y - s * 1.7 + c * side, z: 0.2,
       vx: -c * back * (0.4 + Math.random() * 0.5) + (Math.random() - 0.5) * 3, vy: -s * back * (0.4 + Math.random() * 0.5) + (Math.random() - 0.5) * 3,
       vz: 1.5 + Math.random() * 3, life: 1, col: Math.random() < 0.5 ? '92,78,60' : '120,100,74', a: 2.5, sz: 0.04 + Math.random() * 0.06, grav: true});
   }
-  if (onDirt() && Math.abs(S.v) > 2 && DUST.length < 300) for (const u of [-1.7, 1.5]) for (const v of [-0.95, 0.95]) {
+  if (dry && onDirt() && Math.abs(S.v) > 2 && DUST.length < 300) for (const u of [-1.7, 1.5]) for (const v of [-0.95, 0.95]) {
     if (Math.random() < (sliding ? 0.6 : 0.25)) DUST.push({
       x: S.x + c * u - s * v + (Math.random() - 0.5) * 0.4, y: S.y + s * u + c * v + (Math.random() - 0.5) * 0.4, z: 0.15,
       vx: (Math.random() - 0.5) * 1.2, vy: (Math.random() - 0.5) * 1.2, vz: 0.8 + Math.random() * 1.2, life: 1
@@ -5913,7 +5997,7 @@ function drawDust() {
     p.life -= 0.025;
     if (p.life <= 0) { DUST.splice(i, 1); continue; }
     p.x += p.vx * 0.016; p.y += p.vy * 0.016; p.z += p.vz * 0.016;
-    if (p.grav) { p.vz -= 9.8 * 0.016; if (p.z < 0) { p.z = 0; p.vz = 0; p.vx *= 0.6; p.vy *= 0.6; p.life -= 0.05; } }   // a stone falls back
+    if (p.grav) { p.vz -= 9.8 * 0.016; const fl = p.floor || 0; if (p.z < fl) { if (p.floor) { DUST.splice(i, 1); continue; } p.z = 0; p.vz = 0; p.vx *= 0.6; p.vy *= 0.6; p.life -= 0.05; } }   // a stone falls back
     const q = proj(p.x, p.y, p.z);
     if (!q || q[2] < 2) continue;
     const k = F / q[2];
@@ -6435,6 +6519,8 @@ function trailHeights() {
     for (let i = 0; i < n * 2; i++) { const a = i % n, b = (i + 1) % n; if (!anchor[b]) prof[b] = clamp(prof[b], prof[a] - g, prof[a] + g); }
     for (let i = n * 2; i > 0; i--) { const a = i % n, b = (i - 1 + n) % n; if (!anchor[b]) prof[b] = clamp(prof[b], prof[a] - g, prof[a] + g); }
   }
+  // Round off the corners the grade limit leaves, so an ordinary crest does not throw a car (the fords' own level is kept)
+  for (let pass = 0; pass < 3; pass++) { const P = prof.slice(); for (let i = 0; i < n; i++) { if (anchor[i]) continue; let a = 0; for (let k = -4; k <= 4; k++) a += P[(i + k + n) % n]; prof[i] = a / 9; } }
   // The rock ledges: a steep slab climbing from the road, a flat top and a drop back down. Kept clear of the fords.
   const steps = [];
   for (const [f, up, len] of [[0.075, 1.9, 6], [0.2, 2.4, 7], [0.335, 2.8, 8], [0.47, 2.2, 6], [0.585, 3.2, 8.5], [0.72, 2.6, 7], [0.86, 3.4, 9]]) {
@@ -6444,13 +6530,25 @@ function trailHeights() {
     for (let k = 0; k <= up0 + flat + dn; k++) { const z = k <= up0 ? up * k / up0 : k <= up0 + flat ? up : up * (1 - (k - up0 - flat) / dn); prof[(i0 + k) % n] += z; }
     steps.push([pts[i0][2], pts[(i0 + up0 + flat + dn) % n][2]]);
   }
+  // The jumps: a ramp up to a lip, then the road falls away sharply. Fast enough and you fly. Clear of fords and ledges.
+  const jumps = [];
+  for (const [f, up] of [[0.135, 1.5], [0.4, 2], [0.53, 1.6], [0.79, 2.3]]) {
+    let i0 = Math.floor(f * n);
+    const clear = i => !anchor.slice(i, i + 30).some(Boolean) && !steps.some(([a, b]) => Math.abs(pts[i][2] - a) < 90 || Math.abs(pts[i][2] - b) < 90);
+    let guard = 0; while (!clear(i0) && guard++ < 40) i0 = (i0 + 20) % n;
+    const run = 6, drop = 3;   // (12 m up, 6 m down: 2 m apart)
+    for (let k = 0; k <= run + drop; k++) { const z = k <= run ? up * k / run : up * (1 - (k - run) / drop); prof[(i0 + k) % n] += z; }
+    jumps.push([pts[i0][2], pts[(i0 + run + drop) % n][2]]);
+  }
+  G.jumps = jumps;
   // Stamp the road into the grid, nearest point wins
   const near = new Float32Array(G.w * G.h).fill(1e9), road = new Float32Array(G.w * G.h), Rr = TRAIL_RW + 22;
   for (let i = 0; i < n; i++) {
-    const [x, y] = pts[i], z = prof[i];
+    // (the height along this piece of road, not just its first point's: that left a stair step every 2 m)
+    const [x, y] = pts[i], b = pts[(i + 1) % n], z = prof[i], z2 = prof[(i + 1) % n], sx = b[0] - x, sy = b[1] - y, sl = sx * sx + sy * sy || 1;
     for (let j = Math.max(0, Math.floor(y - Rr - G.y0)); j <= Math.min(G.h - 1, Math.ceil(y + Rr - G.y0)); j++) for (let e = Math.max(0, Math.floor(x - Rr - G.x0)); e <= Math.min(G.w - 1, Math.ceil(x + Rr - G.x0)); e++) {
-      const d = Math.hypot(G.x0 + e - x, G.y0 + j - y), o = j * G.w + e;
-      if (d < near[o]) { near[o] = d; road[o] = z; }
+      const px = G.x0 + e - x, py = G.y0 + j - y, t = clamp((px * sx + py * sy) / sl, 0, 1), d = Math.hypot(px - sx * t, py - sy * t), o = j * G.w + e;
+      if (d < near[o]) { near[o] = d; road[o] = z + (z2 - z) * t; }
     }
   }
   // Everything together: the hills, cut by the channels, blended into the road (tightly beside a river, so the deep water
@@ -6500,7 +6598,7 @@ const TRAIL_ROCKS_RGB = [[150, 96, 68], [128, 84, 62], [166, 122, 86], [112, 92,
 function trailData() {
   if (TRAIL_D) return TRAIL_D;
   const H = TRAIL_H || (TRAIL_H = trailHeights()), rnd = seeded(4242), L = ROUTE_LEN, W = TRAIL_RW, rocks = [], stakes = [], water = [], grid = new Map(), low = LOWG();
-  const onLedge = u => H.steps.some(([a, b]) => { const m = ((u - a) % L + L) % L; return m < ((b - a + L) % L) + 8 || m > L - 8; });
+  const onLedge = u => H.steps.concat(H.jumps).some(([a, b]) => { const m = ((u - a) % L + L) % L; return m < ((b - a + L) % L) + 8 || m > L - 8; });
   const inWater = u => { const p = pointAt(((u % L) + L) % L); return trailElev(p.x, p.y) < TRAIL_ZW + 0.05; };
   const add = (x, y, r, h) => {
     const R = {x, y, r, h, rot: rnd() * 6.28, rgb: TRAIL_ROCKS_RGB[Math.floor(rnd() * 5)]};
@@ -6565,27 +6663,61 @@ function trailData() {
 }
 // How deep a car can wade before water reaches its intake. A snorkel (a car's own wade figure) goes far deeper.
 const wadeOf = () => CFG.wade || (CFG.horse ? 1.4 : clamp(0.25 + (CFG.cgH || 0.5) * 0.9, 0.45, 1));
+// What the water does as you drive through it: a splash on the way in, then bow waves off the front wheels, rooster tails off
+// the rear and a mist hanging over it all, growing with speed and depth. Drops arc up and die on the water (p.floor).
+function splashDrops(n, x, y, z0, depth, ang, spread, sp, vUp) {
+  for (let k = 0; k < n && DUST.length < 560; k++) {
+    const a = ang + (Math.random() - 0.5) * spread, s = sp * (0.35 + Math.random() * 0.9);
+    DUST.push({x: x + (Math.random() - 0.5) * 0.3, y: y + (Math.random() - 0.5) * 0.3, z: z0, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: vUp * (0.45 + Math.random() * 0.8), life: 0.9 + Math.random() * 0.5, col: Math.random() < 0.7 ? '226,238,243' : '186,214,224', a: 0.95, sz: 0.05 + Math.random() * 0.1, grav: true, floor: depth});
+  }
+}
+function splashMist(n, x, y, z0, vx, vy) {
+  for (let k = 0; k < n && DUST.length < 560; k++) DUST.push({x: x + (Math.random() - 0.5) * 0.6, y: y + (Math.random() - 0.5) * 0.6, z: z0, vx: vx + (Math.random() - 0.5) * 1.4, vy: vy + (Math.random() - 0.5) * 1.4, vz: 0.5 + Math.random() * 1.1, life: 0.75, col: '222,233,238', a: 0.2, grow: 1.3});
+}
+function bigSplash(a, depth) {
+  sfx('splash', a);
+  const c = Math.cos(S.h), s = Math.sin(S.h), n = Math.round(14 + a * 46);
+  for (let k = 0; k < n; k++) splashDrops(1, S.x + c * (Math.random() - 0.5) * 3, S.y + s * (Math.random() - 0.5) * 3, depth + 0.1, depth, Math.random() * 6.28, 0.6, 1.5 + a * 4.5, 3 + a * 6);
+  splashMist(Math.round(4 + a * 14), S.x, S.y, depth + 0.2, S.v * c * 0.3, S.v * s * 0.3);
+}
+function splashStep(dt, depth) {
+  const v = Math.abs(S.v), sign = S.v >= 0 ? 1 : -1, c = Math.cos(S.h), s = Math.sin(S.h);
+  if (!S.inWater) { S.inWater = true; if (v > 1 && S.hz < 0.5) bigSplash(clamp(v / 14, 0.2, 1) * clamp(depth / 0.3, 0.5, 1), depth); }
+  if (v < 1.2 || S.hz > 0.1) return;
+  S.splT = (S.splT || 0) - dt;
+  if (S.splT > 0) return;
+  S.splT = 0.024;
+  const k = clamp(v / 12, 0.15, 1.3), wetK = clamp(depth / 0.35, 0.5, 1.4), fr = 1.5 * sign, re = -1.5 * sign, fan = S.h + (sign < 0 ? Math.PI : 0), track = 0.9;
+  for (const side of [-1, 1]) {
+    // A bow wave thrown out sideways and forward from each front wheel
+    const fx = S.x + c * fr - s * side * track, fy = S.y + s * fr + c * side * track, out = fan + side * 1.1;
+    if (Math.random() < 0.85 * k) splashDrops(1 + Math.round(k * 1.5), fx, fy, depth + 0.08, depth, out, 0.7, (1.4 + v * 0.42) * wetK, 1.8 + v * 0.33);
+    // A rooster tail flung up and back by each rear wheel
+    const rx = S.x + c * re - s * side * track, ry = S.y + s * re + c * side * track;
+    if (Math.random() < 0.8 * k) splashDrops(1 + Math.round(k), rx, ry, depth + 0.08, depth, fan + Math.PI, 0.55, v * 0.3 * wetK, 2.2 + v * 0.42);
+    if (Math.random() < 0.2 * k) splashMist(1, rx, ry, depth + 0.15, c * S.v * 0.35, s * S.v * 0.35);
+  }
+}
 function trailStep(dt) {
   const D = trailData(), z = trailElev(S.x, S.y), depth = Math.max(0, TRAIL_ZW - z);
   S.water = S.hz > depth ? 0 : depth;
   // In the water: a bow wave and a warning, and once it is over the intake the engine drowns
   if (depth > 0.08) {
-    if (Math.random() < 0.5) spray(S.x, S.y, S.h, Math.max(6.5, Math.abs(S.v) * 1.5));
+    splashStep(dt, depth);
     const w = wadeOf();
     if (!S.waterTold) { S.waterTold = true; sfx('knock'); log('River! Stay between the stakes: the ford is shallow, the channel beside it is not.', 'warn'); }
     if (depth > w * 0.8 && !S.deepTold) { S.deepTold = true; log('Too deep! Water is nearly at the intake. Back out!', 'bad'); }
     if (depth <= w * 0.5) S.deepTold = false;
     if (depth > w && S.engineOn && !CFG.horse && !S.dead) { S.floodT = (S.floodT || 0) + dt; if (S.floodT > 0.3) { log('Water in the intake! The engine has drowned.', 'bad'); engineDies(); } } else S.floodT = 0;
-  } else S.waterTold = false;
+  } else { S.waterTold = false; S.inWater = false; }
   // The boulders: solid. The car is two circles, nose and tail; a hit stops what is going into the rock and turns the car.
-  if (S.hz > 2) return;
   const c = Math.cos(S.h), s = Math.sin(S.h);
   for (const end of [1.55, -1.55]) {
     const px = S.x + c * end, py = S.y + s * end, list = D.grid.get(Math.floor(px / 16) + ',' + Math.floor(py / 16));
     if (!list) continue;
     for (const R of list) {
       const dx = px - R.x, dy = py - R.y, d = Math.hypot(dx, dy) || 0.01, over = R.r * 0.92 + 0.95 - d;
-      if (over <= 0) continue;
+      if (over <= 0 || S.hz > R.h) continue;   // (a jump can clear a low rock)
       const nx = dx / d, ny = dy / d;   // the way out of the rock
       S.x += nx * over; S.y += ny * over;
       let vx = S.v * c - S.vy * s, vy = S.v * s + S.vy * c;
@@ -7366,7 +7498,7 @@ function nightBand(ai) {
 }
 // The barriers along the road: like the speedway's walls, a car is put back, loses the speed going into them and scrapes
 function nightWalls(dt) {
-  if (S.hz > 1.2) return;
+  if (S.hz > 1.2 && CFG.thrusters) return;
   // The walled road is the legs' strips joined up (a city corner is a square): put the car back if it is outside them all
   const half = 1.2;
   if (nightInside(S.x, S.y, half)) return;
@@ -7469,14 +7601,14 @@ function glcItem(items, d, x, y, fn, reach = 399) {
   GLC.rec = false; GLC.reach = 399; GLC.ds.push(reach > 400 ? d + 1e6 : d);   // (as with scenery: over 400 m of reach sorts first)
 }
 function glcBox(cp, u0, u1, v0, v1, z0, z1, side, top, end) {
-  const R = RIGID, rx = -cp.hy, ry = cp.hx, pt = CUR_PITCH, ex = CAMX - (R ? R.ox : cp.x), ey = CAMY - (R ? R.oy : cp.y), ez = CAMZ - (R ? R.oz : elev(cp.x, cp.y));
+  const R = RIGID, wdz = R && CUR_WHEEL ? wheelDz(R, u0, u1, v0, v1) : 0, rx = -cp.hy, ry = cp.hx, pt = CUR_PITCH, ex = CAMX - (R ? R.ox : cp.x), ey = CAMY - (R ? R.oy : cp.y), ez = CAMZ - (R ? R.oz : elev(cp.x, cp.y));
   // (which faces turn toward the eye, measured in the vehicle's own frame)
   const cu = R ? ex * R.fx + ey * R.fy + ez * R.fz : ex * cp.hx + ey * cp.hy, cv = R ? ex * R.rx + ey * R.ry + ez * R.rz : ex * rx + ey * ry, camZ = R ? ex * R.ux + ey * R.uy + ez * R.uz : ez;
   const alpha = Math.round(ctx.globalAlpha * 255), L = alpha < 255 ? GLC.t : GLC.o, f = L.f, u = L.u, k = 1 - GLC.seq++ * 1.5e-5, cx = GLC.cx, cy = GLC.cy;
   let n = alpha < 255 ? GLC.nT : GLC.n;
   const put = (U, V, Z, c) => {
     let x, y, z;
-    if (R) [x, y, z] = rigidPt(R, U, V, Z, pt); else { x = cp.x + cp.hx * U + rx * V; y = cp.y + cp.hy * U + ry * V; z = elev(x, y) + Z + U * pt + LIFT; }
+    if (R) { [x, y, z] = rigidPt(R, U, V, Z, pt); z += wdz; } else { x = cp.x + cp.hx * U + rx * V; y = cp.y + cp.hy * U + ry * V; z = elev(x, y) + Z + U * pt + LIFT; }
     const o = n * 7;
     f[o] = CAMX + (x - CAMX) * k; f[o + 1] = CAMY + (y - CAMY) * k; f[o + 2] = CAMZ + (z - CAMZ) * k; u[o + 3] = c; f[o + 4] = cx; f[o + 5] = cy; f[o + 6] = GLC.reach; n++;
   };
@@ -9888,7 +10020,7 @@ function applyCarDefaults(id, eng) {
   // The car with its engine (a swapped one if fitted). Settings only some cars have go back to their defaults first,
   // so nothing carries over from the last car.
   const C = effCar(id, eng);
-  Object.assign(CFG, {lowRange: null, lowOn: false, snowBase: null, wade: null, fuel: null, abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
+  Object.assign(CFG, {travel: null, lowRange: null, lowOn: false, snowBase: null, wade: null, fuel: null, abs: false, tcs: false, rearAssist: null, horse: null, thrusters: null, tank: 0, eff: null, tireWear: 1, wetGrip: 0.72, snowGrip: 0.5, inertia: 3, offBoost: null, cam: null, hybrid: null, eAxle: null, aircooled: false, autoClutch: false, sequential: false, noReverse: false, cvt: null, pizzaCare: 1, nosHp: 0, nosSecs: 0, suspCg: 1, suspPitch: 1, suspDirt: 1, offGrip: null, offDrag: null, ix: null, rider: null, overRev: null, trikeTips: false, tipAccel: null, rollMul: 1, auto: false, dct: false, box: 'manual', stallRpm: 2300, electric: false, battery: null, dragMul: 1, awdFront: null, frontDriveShare: undefined, grip: null, stiff: null, cgH: 0.8, twinTurbo: false, bovStock: false, rattle: 0, rust: 0, oilBurn: 0}, C);
   CFG.engineKey = eng && ENGINES[eng] ? eng : id;
   if (!CFG.tank) CFG.tank = tankFor(id);
   CFG.redZone = C.redline;   // the tach's red zone: the factory redline, whatever the tune does to the limiter
@@ -11263,8 +11395,10 @@ function modsText(id, m) {
 // Where the ghost was at time t, between its samples
 function ghostPose(g, t) {
   const n = g.x.length - 1, f = Math.min(n, t / g.dt), i = Math.min(n - 1, Math.floor(f)), k = f - i;
-  if (n < 1) return {x: g.x[0], y: g.y[0], h: g.h[0]};
-  return {x: g.x[i] + (g.x[i + 1] - g.x[i]) * k, y: g.y[i] + (g.y[i + 1] - g.y[i]) * k, h: g.h[i] + wrapA(g.h[i + 1] - g.h[i]) * k};
+  if (n < 1) return {x: g.x[0], y: g.y[0], h: g.h[0], hz: 0, gu: 0};
+  // (both ends in the air, so a ghost does not smear its way up from the ground)
+  const air = g.z && g.a && g.z[i] > 0.02 ? {hz: g.z[i] + (g.z[i + 1] - g.z[i]) * k, gu: g.a[i] + (g.a[i + 1] - g.a[i]) * (g.z[i + 1] > 0 ? k : 0)} : {hz: 0, gu: 0};
+  return Object.assign({x: g.x[i] + (g.x[i + 1] - g.x[i]) * k, y: g.y[i] + (g.y[i + 1] - g.y[i]) * k, h: g.h[i] + wrapA(g.h[i + 1] - g.h[i]) * k}, air);
 }
 // How far behind the ghost you are (seconds, negative ahead): when did the ghost reach the point you are at now?
 function ghostGap() {
@@ -11289,7 +11423,7 @@ function finishTimedRun() {
   const ev = RX.ev, laps = RX.lapTimes.map((t, k) => t - (k ? RX.lapTimes[k - 1] : 0)), g = RX.ghost;
   LAST_RUN = {format: 'pickup-trial-ghost', v: 1, date: new Date().toISOString().slice(0, 10), driver: (SETTINGS.driverName || '').slice(0, 24),
     car: TT_USED.id, mods: TT_USED.mods, paint: CFG.paint, map: ev.map, laps: ev.laps, rain: ev.rain || 0, tod: ev.tod || 'day', time: +RX.done.toFixed(3), lapTimes: laps.map(t => +t.toFixed(3)),
-    jump: RX.jump, pen: +(RX.pen || 0).toFixed(2), dt: GHOST_DT, x: RX.rec.x, y: RX.rec.y, h: RX.rec.h, p: RX.rec.p};
+    jump: RX.jump, pen: +(RX.pen || 0).toFixed(2), dt: GHOST_DT, x: RX.rec.x, y: RX.rec.y, h: RX.rec.h, p: RX.rec.p, z: RX.rec.z, a: RX.rec.a};
   const gl = g ? g.lapTimes : null;
   const rows = laps.map((t, k) => `<tr><td>Lap ${k + 1}</td><td style="text-align:right">${fmtRun(t)}</td>${gl ? `<td style="text-align:right;color:var(--dim)">${gl[k] !== undefined ? fmtRun(gl[k]) : ''}</td><td style="text-align:right;color:${gl[k] !== undefined && t <= gl[k] ? 'var(--ok)' : 'var(--bad)'}">${gl[k] !== undefined ? (t <= gl[k] ? '−' : '+') + Math.abs(t - gl[k]).toFixed(2) : ''}</td>` : ''}</tr>`).join('');
   const verdict = g ? (RX.done < g.time ? `<p style="color:var(--ok)"><b>You beat the ghost by ${(g.time - RX.done).toFixed(2)} s!</b></p>` : `<p style="color:var(--bad)"><b>The ghost wins by ${(RX.done - g.time).toFixed(2)} s.</b></p>`) : '';
@@ -11337,7 +11471,8 @@ function readGhost(text) {
   if (mods.engine && !swapsFor(o.car).includes(mods.engine)) delete mods.engine;
   return {format: o.format, rain: o.rain ? 1 : 0, tod: ['morning', 'day', 'evening', 'night'].includes(o.tod) ? o.tod : 'day', car: o.car, mods, paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : null, map: o.map, laps: Math.round(o.laps), time: +o.time,
     lapTimes: (o.lapTimes || []).filter(t => typeof t === 'number'), driver: typeof o.driver === 'string' ? o.driver.slice(0, 24) : '', date: typeof o.date === 'string' ? o.date.slice(0, 10) : '',
-    dt: o.dt > 0.01 && o.dt < 1 ? o.dt : GHOST_DT, x: o.x, y: o.y, h: o.h, p: o.p};
+    dt: o.dt > 0.01 && o.dt < 1 ? o.dt : GHOST_DT, x: o.x, y: o.y, h: o.h, p: o.p,
+    z: num(o.z) && o.z.length === o.x.length ? o.z : null, a: num(o.a) && o.a.length === o.x.length ? o.a : null};   // (older ghosts have no air time: they stay on the ground)
 }
 function renderGhostInfo(err) {
   const box = $('ghostInfo');
@@ -11962,7 +12097,7 @@ function startEvent(i) {
   }
   Object.assign(S, {x: RX.grid.x, y: RX.grid.y, h: RX.grid.h});
   RX.lastU = strip ? 0 : nearestArc(S.x, S.y);
-  if (ev.ghostRun) { RX.rec = {x: [], y: [], h: [], p: []}; RX.lapTimes = []; RX.ghost = GHOST_RACE ? GHOST : null; }
+  if (ev.ghostRun) { RX.rec = {x: [], y: [], h: [], p: [], z: [], a: []}; RX.lapTimes = []; RX.ghost = GHOST_RACE ? GHOST : null; }
   $('checkT').textContent = ev.series.name; $('checkX').innerHTML = ''; $('check').hidden = false;
   renderEventHud();
   $('overlay').querySelector('.lbl').textContent = ev.series.name;
@@ -12068,6 +12203,7 @@ function eventTick(dt) {
   // A timed run records where you are 20 times a second from the green light: the ghost
   if (RX.rec && RX.t >= 0 && RX.done === null) while (RX.rec.x.length * GHOST_DT <= RX.t) {
     RX.rec.x.push(+S.x.toFixed(2)); RX.rec.y.push(+S.y.toFixed(2)); RX.rec.h.push(+S.h.toFixed(3)); RX.rec.p.push(+RX.prog.toFixed(1));
+    RX.rec.z.push(S.aloft ? +S.hz.toFixed(2) : 0); RX.rec.a.push(S.aloft ? +S.airGu.toFixed(3) : 0);   // (its air time: height over the ground and the body's slope)
   }
   if (RX.done === null && RX.prog >= RX.target) return finishEvent();
   if (RX.t - RX.uiAt > 0.2) { RX.uiAt = RX.t; renderEventHud(); }
@@ -12250,7 +12386,7 @@ function addEventItems(items, dist) {
   // The ghost: the recorded car, see-through, where it was at this moment of its run
   if (RX.ghost) {
     const g = ghostPose(RX.ghost, Math.max(0, RX.t)), d = dist(g.x, g.y);
-    if (d < 350 && d > 1.5 && !hiddenByTerrain(g.x, g.y)) glcItem(items, d, g.x, g.y, () => { const a = ctx.globalAlpha; ctx.globalAlpha = 0.42; drawOther(RX.ghost.car, g.x, g.y, g.h, RX.ghost.paint || CARS[RX.ghost.car].paint); ctx.globalAlpha = a; });
+    if (d < 350 && d > 1.5 && !hiddenByTerrain(g.x, g.y)) glcItem(items, d, g.x, g.y, () => { const a = ctx.globalAlpha; ctx.globalAlpha = 0.42; RIDE = g.hz > 0.02 ? {oz: elev(g.x, g.y) + Math.max(0, g.hz), gu: g.gu, gv: 0} : null; drawOther(RX.ghost.car, g.x, g.y, g.h, RX.ghost.paint || CARS[RX.ghost.car].paint); RIDE = null; ctx.globalAlpha = a; });
   }
   // Gate posts either side of each checkpoint, with a flag on top: yellow for the next one, gray for the rest
   if (RX.cps) RX.cps.forEach((cu, k) => {
