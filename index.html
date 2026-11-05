@@ -480,7 +480,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
         <div class="seg" id="todPick" role="group" aria-label="Time of day" style="margin-top:10px"><span>Time</span><button type="button" data-tod="morning">Morning</button><button type="button" data-tod="day" class="on">Day</button><button type="button" data-tod="evening">Evening</button><button type="button" data-tod="night">Night</button></div>
         <p class="tt-hint" id="todHint"></p></div>
       <div><h3 class="tt-h"><b>3</b>Mode</h3>
-        <div class="seg" id="modePick" role="group" aria-label="Mode"><button type="button" data-mode="free" class="on">Free drive</button><button type="button" data-mode="timed">Timed run</button><button type="button" data-mode="street">Street race</button><button type="button" data-mode="ghost">Race a ghost</button></div>
+        <div class="seg" id="modePick" role="group" aria-label="Mode"><button type="button" data-mode="free" class="on">Free drive</button><button type="button" data-mode="timed">Timed run</button><button type="button" data-mode="street">Race</button><button type="button" data-mode="ghost">Race a ghost</button></div>
         <div class="tt-mode" data-for="free"><p class="tt-hint">No clock and no laps: take any car anywhere.</p></div>
         <div class="tt-mode" data-for="timed" hidden>
           <div class="seg" id="runPick" role="group" aria-label="Laps" style="margin-top:10px"><span>Laps</span><button type="button" data-laps="1" class="on">1</button><button type="button" data-laps="2">2</button><button type="button" data-laps="3">3</button><button type="button" data-laps="5">5</button></div>
@@ -489,7 +489,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
         </div>
         <div class="tt-mode" data-for="street" hidden>
           <div class="seg" id="streetPick" role="group" aria-label="Laps" style="margin-top:10px"><span>Laps</span><button type="button" data-laps="1" class="on">1</button><button type="button" data-laps="2">2</button><button type="button" data-laps="3">3</button></div>
-          <p class="tt-hint">Five racers from your car's class on Midnight City, swerving through the traffic with you. Takes you to Midnight City.</p>
+          <p class="tt-hint">Five racers from your car's class on any loop track, with checkpoints and a result at the end. On Midnight City they swerve through the traffic with you.</p>
         </div>
         <div class="tt-mode" data-for="ghost" hidden>
           <p class="tt-hint">Load a ghost file someone sent you (or one of your own). You race it on the same track and in the same weather. Race the ghost puts you in its car with its parts; or pick any car from the list below to race it in that one, with your own setup.</p>
@@ -11376,7 +11376,7 @@ const LOOP_MAPS = ['circuit', 'short', 'plot', 'dirt', 'rally', 'forest', 'oval'
 const MAP_NAMES = {circuit: 'Circuit', short: 'Club circuit', plot: 'Parking lot', dirt: 'Dirt course', rally: 'Rally stage', forest: 'Forest stage', oval: 'Speedway', airfield: 'Airfield', pass: 'Mountain pass', night: 'Midnight City', trail: 'Boulder Canyon'};
 const ttRunOn = () => TT_MODE === 'street' || (TT_MODE === 'timed' && LOOP_MAPS.includes(TT_MAP));
 function ttRunEvent() {
-  if (TT_MODE === 'street' && !GHOST_RACE) return {id: 'ttstreet', ttStreet: true, map: 'night', laps: TT_LAPS, prize: 0, rain: TT_RAIN ? 1 : 0, name: 'Street race',
+  if (TT_MODE === 'street' && !GHOST_RACE) return {id: 'ttstreet', ttStreet: true, map: TT_MAP, laps: TT_LAPS, prize: 0, rain: TT_RAIN ? 1 : 0, tod: TT_TIME, name: 'Race',
     series: {name: 'Test Track', skill: 0.82, pool: (r, me) => r.tier === me.tier && !CARS[r.body].trikeTips}};
   const laps = GHOST_RACE && GHOST ? GHOST.laps : TT_LAPS, map = GHOST_RACE && GHOST ? GHOST.map : TT_MAP;
   return {id: 'ttrun', ghostRun: true, map, laps, prize: 0, rain: GHOST_RACE && GHOST ? GHOST.rain || 0 : TT_RAIN ? 1 : 0, tod: GHOST_RACE && GHOST ? GHOST.tod || 'day' : TT_TIME, name: GHOST_RACE ? 'Ghost race' : `Timed run: ${laps} ${laps === 1 ? 'lap' : 'laps'}`,
@@ -11497,15 +11497,14 @@ function updateTTSetup() {
   document.querySelectorAll('.tt-mode').forEach(d => { d.hidden = d.dataset.for !== TT_MODE; });
   document.querySelectorAll('#wxPick [data-wx]').forEach(b => b.classList.toggle('on', (b.dataset.wx === 'rain') === TT_RAIN));
   const timed = TT_MODE === 'timed', ghost = TT_MODE === 'ghost', street = TT_MODE === 'street';
-  if (street && TT_MAP !== 'night') { TT_MAP = 'night'; document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP)); }
-  if (timed && !LOOP_MAPS.includes(TT_MAP)) { TT_MAP = 'circuit'; document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP)); }
-  document.querySelectorAll('#mapPick [data-map]').forEach(b => { const off = (timed && !LOOP_MAPS.includes(b.dataset.map)) || ghost || (street && b.dataset.map !== 'night'); b.classList.toggle('off', off); b.title = off ? (ghost ? 'The ghost picks the track' : street ? 'Street races run on Midnight City' : 'Timed runs need a loop track') : ''; });
+  if ((timed || street) && !LOOP_MAPS.includes(TT_MAP)) { TT_MAP = 'circuit'; document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP)); }
+  document.querySelectorAll('#mapPick [data-map]').forEach(b => { const off = ((timed || street) && !LOOP_MAPS.includes(b.dataset.map)) || ghost; b.classList.toggle('off', off); b.title = off ? (ghost ? 'The ghost picks the track' : street ? 'Races need a loop track' : 'Timed runs need a loop track') : ''; });
   document.querySelectorAll('#wxPick button').forEach(b => { b.classList.toggle('off', ghost); });
   // Time of day: the ghost picks it too; Midnight City is always night
   const fixedTime = ghost || TT_MAP === 'night' || TT_MAP === 'nightR';
   document.querySelectorAll('#todPick [data-tod]').forEach(b => { b.classList.toggle('on', b.dataset.tod === TT_TIME && !fixedTime); b.classList.toggle('off', fixedTime); });
   $('todHint').textContent = ghost ? 'The ghost picks the time of day.' : fixedTime ? 'Midnight City is always night.' : TOD[TT_TIME].hint;
-  $('mapHint').textContent = ghost ? 'The ghost picks the track.' : street ? 'Street races run on Midnight City.' : timed ? 'Timed runs and ghosts need a loop track: the training lot and the towns are free drive only.' : '';
+  $('mapHint').textContent = ghost ? 'The ghost picks the track.' : street ? 'Races need a loop track: the training lot is the smallest, the towns are free drive only.' : timed ? 'Timed runs and ghosts need a loop track: the training lot and the towns are free drive only.' : '';
   $('mapHint').hidden = !$('mapHint').textContent;
   const pass = TT_MAP === 'pass';
   $('wxHint').textContent = ghost ? 'The ghost picks the weather.' : TT_RAIN ? (pass ? 'Snow on the mountain pass: about half the grip on road tires. Off-road tires bite best; sport tires and slicks slide.' : 'About a quarter less grip and longer stops. Slicks are treacherous.') : (pass ? 'Rain falls as snow up on the mountain pass.' : 'Clear skies.');
@@ -12103,8 +12102,8 @@ function startEvent(i) {
   $('overlay').querySelector('.lbl').textContent = ev.series.name;
   const go = () => { $('overlay').hidden = true; Object.assign(S, {x: RX.grid.x, y: RX.grid.y, h: RX.grid.h, v: 0, vy: 0, r: 0, ww: 0}); RX.armed = true; RX.t = -3.6; };
   if (ev.ghostRun) return showOverlay(ev.name, ghostBriefing(ev), 'Line up', go);
-  if (ev.ttStreet) return showOverlay(ev.name, `<p>${mapLabel(ev)}, at night, against ${ais.map(a => `${a.name} (${a.r.year} ${a.r.name})`).join(', ')}.</p>
-    <p><b>The traffic is real and it is not paying attention.</b> It runs both ways, changes lanes when it likes and stops for no reason. Stay out of the oncoming lanes unless they are clear.</p>
+  if (ev.ttStreet) return showOverlay(ev.name, `<p>${mapLabel(ev)}, against ${ais.map(a => `${a.name} (${a.r.year} ${a.r.name})`).join(', ')}.</p>
+    ${ev.map === 'night' || ev.map === 'nightR' ? '<p><b>The traffic is real and it is not paying attention.</b> It runs both ways, changes lanes when it likes and stops for no reason. Stay out of the oncoming lanes unless they are clear.</p>' : ''}
     <p class="keys">The engine's running: clutch in, first gear, and go on green. Backspace, Esc or &#96; to quit.</p>`, 'Line up', go);
   if (ev.eco) return showOverlay(ev.name, `${fuelWarn(RX.target)}<p>${mapLabel(ev)}, ${(RX.target / 1609.34).toFixed(1)} miles, on your own.</p>
     <p>Finish inside <b>${fmtClock(ecoLimit(ev))}</b> (an average of ${ev.ecoMph} mph) and the medal goes by the fuel you burn: gold at <b>${ev.eco[0]} mpg</b> or better, silver ${ev.eco[1]}, bronze ${ev.eco[2]}. Over the time limit, no medal at all.</p>
@@ -12298,7 +12297,7 @@ function finishStreetRun() {
   const rows = RX.ais.map(ai => ({name: `${ai.name} (${ai.r.name})`, t: ai.fin !== null ? ai.fin : RX.t + (RX.target - ai.u) / Math.max(ai.v, 15)})).concat([{name: 'You (' + CFG.name + ')', t: RX.done, me: true}]).sort((a, b) => a.t - b.t);
   const pos = rows.findIndex(r => r.me) + 1;
   $('overlay').querySelector('.lbl').textContent = 'Test Track';
-  showOverlay(pos === 1 ? 'Street race: you win!' : `Street race: ${ordinal(pos)}`,
+  showOverlay(pos === 1 ? 'Race: you win!' : `Race: ${ordinal(pos)}`,
     `<table class="cr-table" style="margin-bottom:10px">${rows.map((r, k) => `<tr${r.me ? ' style="color:var(--accent)"' : ''}><td>${ordinal(k + 1)}</td><td>${r.name}</td><td style="text-align:right">${k === 0 ? fmtClock(r.t) : '+' + (r.t - rows[0].t).toFixed(1) + ' s'}</td></tr>`).join('')}</table>
      <p style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="stGarage" style="background:transparent;color:inherit;border:1px solid var(--line)">Back to the garage</button></p>`,
     'Run again', () => reset());
