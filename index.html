@@ -583,7 +583,7 @@ const CAM_H = 1.2;   // eye height in the cab when a car does not set its own
 // and how far the head has swayed. The Settings menu can switch any car back to the flat 2D cockpit.
 const CAB3D = {pickup: {eye: {u: 0.75, v: -0.38, z: 1.6}, hor: 0.42},
   // Riders sit on the center line: the eye is the rider's, from each machine's ix.bike
-  atc110: {eye: {u: -0.18, v: 0, z: 1.35}, hor: 0.3}, mazdago: {eye: {u: -0.28, v: 0, z: 1.58}, hor: 0.32},
+  cr250: {eye: {u: -0.2, v: 0, z: 1.62}, hor: 0.3}, atc110: {eye: {u: -0.18, v: 0, z: 1.35}, hor: 0.3}, mazdago: {eye: {u: -0.28, v: 0, z: 1.58}, hor: 0.32},
   // In the saddle, and on the buggy's bench
   horse: {eye: {u: -0.08, v: 0, z: 2.6}, hor: 0.32}, buggy: {eye: {u: -0.55, v: -0.25, z: 1.85}, hor: 0.36}};
 const SWAY = {u: 0, v: 0, z: 0};
@@ -676,6 +676,7 @@ const GATES = {
   // The EV1's selector: reverse, neutral and drive in a straight line (key 1 is drive)
   ev: {slots: {0: [75, 60], '-1': [75, 22], 1: [75, 98]}, lines: 'M75 22V98', labels: {'-1': 'R', 0: 'N', 1: 'D'}},
   // The ATC110's foot shifter: a sequential four-speed, neutral at the bottom, one gear at a time
+  seq5: {slots: {0: [75, 112], 1: [75, 92], 2: [75, 72], 3: [75, 52], 4: [75, 32], 5: [75, 12]}, lines: 'M75 12V112', labels: {0: 'N', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5'}},
   seq4: {slots: {0: [75, 108], 1: [75, 86], 2: [75, 64], 3: [75, 42], 4: [75, 20]}, lines: 'M75 20V108', labels: {0: 'N', 1: '1', 2: '2', 3: '3', 4: '4'}},
   // The Mazda-Go's three-speed with reverse
   h3: {slots: {0: [65, 60], '-1': [20, 30], 1: [50, 30], 2: [50, 90], 3: [80, 30]}, lines: 'M20 30V60M50 30V90M80 30V60M20 60H80'},
@@ -1838,6 +1839,29 @@ Object.assign(CARS, {
     ix: {bike: {eye: {u: -0.18, z: 1.35}, bar: {u: 0.4, z: 0.97, hw: 0.38}, pivot: 0.45, tank: [0.0, 0.35, 0.16, 0.66, 0.82], front: {u: 0.6, r: 0.27, w: 0.13},
       fender: [0.3, 0.95, 0.2, 0.5, 0.58], nacelle: true, knees: {u: 0.22, v: 0.27, z: 0.86}}}
   }),
+  // A two-wheeler: the 2002 Honda CR250R motocross bike, a 249cc two-stroke. It shares the three-wheelers' handling and
+  // handlebar view, but shape.bike gives it one wheel per axle and it leans into a turn (see trikeStep). It has a real clutch.
+  cr250: rosterCar('cr250', {tank: 8,
+    fuel: 'carb',   // a carbureted two-stroke
+    short: 'CR250R', year: 2002, drive: 'rear', mass: 172, r: 0.33, fd: 9.7, gears: [1.93, 1.56, 1.29, 1.09, 0.92], rev: 3, gate: 'seq5',
+    hp: 46, hpRpm: 8000, peakTq: 41, tqPeak: 7000, idle: 1500, redline: 9000, gaugeMax: 11000, wb: 1.46, front: 0.42, cyl: 1, inertia: 8,
+    grip: [0.6, 0.95], balance: 0.72, eyeH: 1.6, eyeHor: 0.42, paint: '#d3121a', lowFrac: 0.35, cgH: 0.55, dragMul: 3, idleTq: 0,
+    sequential: true, noReverse: true, offGrip: 0.98, offDrag: 0.25, trikeTips: true, tipAccel: 9,
+    engine: '249cc two-stroke single, liquid-cooled: 46 hp at 8,000 rpm, 41 Nm at 7,000 rpm', note: 'Nothing, nothing, then all of it at once. A real clutch and a foot shifter, one click at a time. Leans into turns; ask too much of the tires and you are on the ground',
+    blurb: 'A 2002 Honda CR250R: an aluminum-framed motocross bike with a ring-ding two-stroke, no lights and no manners.',
+    rider: {hat: '#f0efe8', top: '#d3121a', legs: '#23262c', hands: '#161616'},
+    shape: {trike: true, bike: true, track: 0, tw: 0.055, axles: [-0.72, 0.74], parts: parts(
+      full('k', -0.2, 0.25, 0.12, 0.25, 0.62), full('c', -0.16, 0.5, 0.04, 0.6, 0.72), full('p', -0.05, 0.38, 0.13, 0.72, 0.92),
+      sym('p', 0.1, 0.4, 0.13, 0.22, 0.6, 0.85), full('k', -0.62, 0.02, 0.1, 0.84, 0.94), full('p', -1.0, -0.45, 0.09, 0.84, 0.89),
+      full('p', 0.55, 1.02, 0.08, 0.72, 0.76), full('w', 0.62, 0.66, 0.1, 0.85, 1.1), sym('c', 0.6, 0.66, 0.05, 0.09, 0.33, 0.98),
+      full('c', 0.46, 0.5, 0.38, 1.12, 1.15), full('c', 0.47, 0.5, 0.03, 0.95, 1.12), sym('c', -0.72, -0.1, 0.06, 0.09, 0.3, 0.37),
+      full('c', -0.2, -0.12, 0.03, 0.35, 0.82), [['k', -0.8, -0.1, 0.12, 0.19, 0.62, 0.7]], sym('c', -0.05, 0.05, 0.1, 0.28, 0.36, 0.39),
+      sym('k', 0.02, 0.3, 0.16, 0.26, 0.34, 0.46), sym('rp', 0.08, 0.22, 0.16, 0.26, 0.46, 1.02), sym('rp', -0.3, 0.2, 0.1, 0.22, 0.92, 1.06),
+      full('rj', -0.4, -0.1, 0.2, 1.03, 1.5), sym('rj', -0.2, 0.38, 0.21, 0.3, 1.2, 1.32), sym('rs', 0.4, 0.5, 0.3, 0.4, 1.12, 1.2),
+      full('rh', -0.38, -0.06, 0.14, 1.5, 1.78), full('g', -0.08, -0.04, 0.1, 1.58, 1.7))},
+    ix: {bike: {eye: {u: -0.2, z: 1.62}, bar: {u: 0.48, z: 1.14, hw: 0.38}, pivot: 0.5, tank: [-0.05, 0.38, 0.13, 0.72, 0.92], front: {u: 0.74, r: 0.33, w: 0.055},
+      fender: [0.55, 1.02, 0.08, 0.72, 0.76], nacelle: false, knees: {u: 0.22, v: 0.25, z: 1.02}}}
+  }),
   // The Mazda-Go DA (1931): Mazda's first vehicle, a three-wheeled truck that is a motorcycle at the front and a wooden
   // cargo bed at the back, a 482cc single with a three-speed and reverse.
   mazdago: rosterCar('mazdago', {tank: 9,
@@ -1913,7 +1937,7 @@ const ENGINE_INFO = {
   rabbit83: ['VW 1.7 eight valve', 115], rabbitpu: ['VW 1.6 diesel', 140],
   caprice66: ['Chevy 396 V8 (L35)', 300], caprice85: ['Chevy 305 V8', 240], caprice94: ['Chevy LT1 5.7 V8 (B-body)', 220],
   grandam73: ['Pontiac 400 V8', 290], grandam79: ['Pontiac 301 V8', 230], grandam87: ['GM 2.0 turbo four', 140], grandam93: ['Quad 4 2.3 HO', 145],
-  grandam01: ['GM 2.4 Twin Cam', 145], insight00: ['Honda ECA 1.0 three with IMA', 95], ev1: ['EV1 AC induction motor', 70], horse: ['One horse', 0], buggy: ['One horse', 0], roadster26: ['Tesla tri-motor', 150], atc110: ['Honda 105cc single', 25], mazdago: ['Mazda 482cc single', 60], ginogo: ['Mazda 482cc single', 60],
+  grandam01: ['GM 2.4 Twin Cam', 145], insight00: ['Honda ECA 1.0 three with IMA', 95], ev1: ['EV1 AC induction motor', 70], horse: ['One horse', 0], buggy: ['One horse', 0], roadster26: ['Tesla tri-motor', 150], cr250: ['Honda CR250 two-stroke', 40], atc110: ['Honda 105cc single', 25], mazdago: ['Mazda 482cc single', 60], ginogo: ['Mazda 482cc single', 60],
   crv97: ['Honda B20B 2.0', 135], beetle67: ['VW 1500 air-cooled flat four', 115], beetle99: ['VW 1.8T twenty-valve', 145], beetle13: ['VW 2.0 TSI', 145], crv03: ['Honda K24A1 2.4 i-VTEC', 150], odyssey10: ['Honda J35A7 3.5 V6', 175], crv07: ['Honda K24Z1 2.4 i-VTEC', 150], explorer91: ['Ford 4.0 OHV V6', 200], explorer98: ['Ford 4.0 SOHC V6', 195],
   alltrac91: ['3S-GTE 2.0 turbo (All-Trac)', 160], brat85: ['Subaru EA81 1.8 flat four', 110], justy90: ['Subaru EF12 1.2 three', 80], wrx99: ['Subaru EJ20 2.0 turbo flat four', 140], wrx16: ['Subaru FA20DIT 2.0 turbo flat four', 145], svx92: ['Subaru EG33 3.3 flat six', 190], f15077: ['Ford 351M V8', 300], dmc81: ['PRV 2.85 V6', 150], forester11: ['Subaru EJ253 2.5 flat four', 150], metro90: ['Suzuki G10 1.0 three', 65]
 };
@@ -2001,12 +2025,12 @@ const ENGINE_COST = {pickup: 900, pickup4x4: 2400, celica: 600, ram: 11000, ae86
   gti84: 700, cabrio90: 700, cabrio01: 900, greta: 1400, fc88: 2500, mr291: 4000, supra3: 3800, gn87: 4500, z3290: 5500, r32: 14000, fd93: 7000, supra4: 12000,
   nsx91: 9000, r34: 16000, viper96: 18000, c964: 8000, ls1: 8000, tdi: 2000, k20: 5000, lt7: 60000, vtwin: 1800, la1: 1500,
   vette1: 7000, vette2: 9500, vette3: 9000, vette4: 5000, vette5: 8000, vette6: 10500, vette7: 13500, vette8: 17000, rabbit83: 600, rabbitpu: 1200,
-  caprice66: 3500, caprice85: 1200, caprice94: 4500, grandam73: 3000, grandam79: 1000, grandam87: 1800, grandam93: 1200, grandam01: 1200, insight00: 3000, odyssey10: 2200, ev1: 6000, horse: 0, buggy: 0, roadster26: 40000, atc110: 300, mazdago: 1500, ginogo: 1500, crv97: 1500, beetle67: 900, beetle99: 1800, beetle13: 3200, crv03: 2500, crv07: 2800, explorer91: 1200, explorer98: 1800, alltrac91: 3500, brat85: 600, justy90: 500, wrx99: 6000, wrx16: 6500, svx92: 3500, f15077: 1200, dmc81: 2500, forester11: 2000, metro90: 300};
+  caprice66: 3500, caprice85: 1200, caprice94: 4500, grandam73: 3000, grandam79: 1000, grandam87: 1800, grandam93: 1200, grandam01: 1200, insight00: 3000, odyssey10: 2200, ev1: 6000, horse: 0, buggy: 0, roadster26: 40000, cr250: 900, atc110: 300, mazdago: 1500, ginogo: 1500, crv97: 1500, beetle67: 900, beetle99: 1800, beetle13: 3200, crv03: 2500, crv07: 2800, explorer91: 1200, explorer98: 1800, alltrac91: 3500, brat85: 600, justy90: 500, wrx99: 6000, wrx16: 6500, svx92: 3500, f15077: 1200, dmc81: 2500, forester11: 2000, metro90: 300};
 // Maker families, for the labor: GM covers Chevrolet and Buick, Honda covers Acura, Chrysler covers Dodge and Ram
 const MAKER = {pickup: 'toyota', pickup4x4: 'toyota', celica: 'toyota', ae86: 'toyota', mr291: 'toyota', supra3: 'toyota', supra4: 'toyota', ram: 'chrysler', viper96: 'chrysler',
   civic88: 'honda', nsx91: 'honda', k20: 'honda', vtwin: 'honda', la1: 'gm', lt7: 'gm', miata90: 'mazda', fc88: 'mazda', fd93: 'mazda', s13: 'nissan', z3290: 'nissan', r32: 'nissan', r34: 'nissan',
   fox87: 'ford', camaro86: 'gm', gn87: 'gm', ls1: 'gm', vette1: 'gm', vette2: 'gm', vette3: 'gm', vette4: 'gm', vette5: 'gm', vette6: 'gm', vette7: 'gm', vette8: 'gm', gti84: 'vw', cabrio90: 'vw', cabrio01: 'vw', greta: 'vw', tdi: 'vw', rabbit83: 'vw', rabbitpu: 'vw',
-  caprice66: 'gm', caprice85: 'gm', caprice94: 'gm', grandam73: 'gm', grandam79: 'gm', grandam87: 'gm', grandam93: 'gm', grandam01: 'gm', insight00: 'honda', odyssey10: 'honda', roadster26: 'tesla', ev1: 'gm', horse: 'horse', buggy: 'horse', atc110: 'honda', mazdago: 'mazda', ginogo: 'mazda', crv97: 'honda', beetle67: 'vw', beetle99: 'vw', beetle13: 'vw', crv03: 'honda', crv07: 'honda', explorer91: 'ford', explorer98: 'ford', c964: 'porsche', alltrac91: 'toyota', brat85: 'subaru', justy90: 'subaru', wrx99: 'subaru', wrx16: 'subaru', svx92: 'subaru', f15077: 'ford', dmc81: 'delorean', forester11: 'subaru', metro90: 'gm'};
+  caprice66: 'gm', caprice85: 'gm', caprice94: 'gm', grandam73: 'gm', grandam79: 'gm', grandam87: 'gm', grandam93: 'gm', grandam01: 'gm', insight00: 'honda', odyssey10: 'honda', roadster26: 'tesla', ev1: 'gm', horse: 'horse', buggy: 'horse', cr250: 'honda', atc110: 'honda', mazdago: 'mazda', ginogo: 'mazda', crv97: 'honda', beetle67: 'vw', beetle99: 'vw', beetle13: 'vw', crv03: 'honda', crv07: 'honda', explorer91: 'ford', explorer98: 'ford', c964: 'porsche', alltrac91: 'toyota', brat85: 'subaru', justy90: 'subaru', wrx99: 'subaru', wrx16: 'subaru', svx92: 'subaru', f15077: 'ford', dmc81: 'delorean', forester11: 'subaru', metro90: 'gm'};
 function swapPrice(body, eng) {
   const r = ROSTER.find(x => x.body === body), E = ENGINES[eng];
   const hard = (MAKER[eng] === MAKER[body] ? 1 : 1.8) + (E.diesel && !CARS[body].diesel ? 0.6 : 0);
@@ -2811,6 +2835,7 @@ Object.assign(SOUND, {
   crv97: Object.assign({}, VOICE.twincam, {rasp: 0.7, gain: 0.85}), crv03: Object.assign({}, VOICE.twincam, {rasp: 0.9, pk1: [140, 5]}), odyssey10: Object.assign({}, VOICE.v6, {rasp: 0.35, lope: 0.05, gain: 0.95, tick: 0.015}), crv07: Object.assign({}, VOICE.twincam, {rasp: 0.7, pk1: [140, 5], gain: 0.85}),
   // The air-cooled flat four: a hollow, rattly thrum with fan whirr and clattering valves
   // Singles: one big thump per two turns. The little ATC putters and buzzes, the Mazda-Go thuds
+  cr250: {fire: [0, 0.5], pk1: [170, 6], pk2: [640, 8], lp: [420, 0.5, 900], saw: 0.6, sq: 0.5, nbp: [760, 0.4], noise: [0.07, 0.3], lope: 0.2, tick: 0.05, tickHz: 3400, gain: 0.72, rasp: 1},   // ring-ding: a two-stroke fires every turn
   atc110: {pk1: [120, 7], pk2: [420, 7], lp: [260, 0.3, 520], saw: 0.5, sq: 0.5, nbp: [420, 0.32], noise: [0.06, 0.26], lope: 0.25, tick: 0.07, tickHz: 3000, gain: 0.75, rasp: 0.8},
   // The V-twin swap: deep, loose and lumpy, its two pulses bunched together (fire: where in the 720-degree cycle each
   // cylinder fires, 0 and 405 degrees for a 45-degree twin), the potato-potato
@@ -3156,6 +3181,7 @@ const STARTERS = {
   // The Insight has no separate starter: the IMA motor spins the engine up almost silently and very quickly
   crv97: {hz: 80, chug: 8, depth: 0.2, whine: 3000, whineLv: 0.1, time: 0.5, flare: 1.4},
   // Pull-start and kick-start singles: a quick yank and a cough, no starter motor whine
+  cr250: {hz: 170, chug: 12, depth: 0.7, whine: 0, whineLv: 0, time: 0.3, flare: 2},   // a kick
   atc110: {hz: 140, chug: 16, depth: 0.55, whine: 900, whineLv: 0.02, time: 0.35, flare: 1.6},
   ginogo: {hz: 90, chug: 9, depth: 0.6, whine: 700, whineLv: 0.01, time: 0.5, flare: 1.5},
   mazdago: {hz: 90, chug: 9, depth: 0.6, whine: 700, whineLv: 0.01, time: 0.5, flare: 1.5},
@@ -3462,10 +3488,10 @@ function shift(g) {
   if (S.tip) return;
   if (S.finished || (S.gear === g && !S.grinding)) return;
   if (g === -1 && CFG.noReverse) { log('No reverse on this one. Get off and push.', 'warn'); return; }
+  if (CFG.sequential && g >= 0 && Math.abs(g - S.gear) > 1) { log(`One click at a time: ${S.gear === 0 ? 'N' : S.gear} to ${g > S.gear ? (S.gear + 1) : (S.gear - 1 || 'N')} first.`, 'warn'); return; }
   // The ATC's foot shifter: one gear at a time, the automatic clutch opening for the shift, so it never grinds
   if (CFG.autoClutch) {
     if (g > 0 && !CFG.ratios[g]) return;
-    if (CFG.sequential && Math.abs(g - S.gear) > 1) { log(`One click at a time: ${S.gear === 0 ? 'N' : S.gear} to ${g > S.gear ? (S.gear + 1) : (S.gear - 1 || 'N')} first.`, 'warn'); return; }
     S.gear = g; S.grinding = false; S.lurchG = 0; S.shiftT = 0.25; sfx('clunk'); log(g === 0 ? 'Neutral.' : 'Gear ' + g + '.'); return;
   }
   // The EV1's selector: drive, neutral or reverse, no clutch and nothing to grind. Reverse spins the motor backwards,
@@ -3974,6 +4000,15 @@ function rollSpeedMul(v) {
 function leanOf(roll) { const g = Math.abs(roll); return -Math.sign(roll) * (g <= ROLL_WARN ? g * 0.5 : 10 + (g - ROLL_WARN) * 2) * Math.PI / 180; }
 function trikeStep(dt) {
   if (!CFG.trikeTips || S.tip) return;   // (tipStep has it during a rollover)
+  if (CARS[CFG.body].shape.bike) {   // two wheels: it leans INTO a turn by exactly what balances it, on its contact patches
+    const ay = S.aloft ? 0 : S.v * S.r, lean = Math.atan(ay / 9.81) * 180 / Math.PI;
+    S.roll = (S.roll || 0) + (lean - (S.roll || 0)) * Math.min(1, dt * 7);
+    if (S.sb) { S.sb.tilt = S.roll * Math.PI / 180; S.sb.tv = 0; S.sb.dz = 0; }
+    // Past the tires' grip for a moment, leaned over, it goes down on the inside (dirt forgives a slide for longer)
+    S.slideT = (S.tireUse || 0) >= 1 && Math.abs(S.v) > 5 && Math.abs(S.v) > 12 && Math.abs(S.roll) > 30 ? (S.slideT || 0) + dt : 0;
+    if (S.slideT > (onDirt() ? 1.2 : 0.7) && !S.aloft) { S.slideT = 0; startTip(Math.sign(S.roll)); }
+    return;
+  }
   const v = Math.abs(S.v), target = S.aloft ? 0 : clamp(S.v * S.r / (CFG.tipAccel || 5.6) * ROLL_TIP * (CFG.rollMul || 1) * rollSpeedMul(v), -60, 60);
   S.rollV = (S.rollV || 0) + ((target - (S.roll || 0)) * 40 - (S.rollV || 0) * 12.6) * dt;   // critically damped: a flick does not overshoot
   S.roll = (S.roll || 0) + S.rollV * dt;
@@ -4014,7 +4049,7 @@ function drawAirGauge() {
   ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(S.infAir ? 'AIR ∞' : 'AIR', x + w / 2, y + h + 5 * u);
 }
 function drawRollGauge() {
-  if (!CFG.trikeTips || SHOWCASE) return;
+  if (!CFG.trikeTips || SHOWCASE || (CARS[CFG.body].shape.bike && !S.tip)) return;   // (a bike only shows it while it is down)
   const r = VH * 0.075, cx = VW / 2, cy = VH * 0.035 + r, roll = S.roll || 0, deg = Math.PI / 180;
   ctx.save();
   ctx.fillStyle = 'rgba(12,12,12,0.8)'; ctx.beginPath(); ctx.arc(cx, cy, r * 1.15, 0, Math.PI * 2); ctx.fill();
@@ -5964,7 +5999,7 @@ function drawShapeModelRaw(car) {
   const tr = CFG.body === car.body ? CFG.r : car.r;
   const frontU = Math.max(...sh.axles);
   const wc = sh.wheelCol ? [sh.wheelCol, tint(sh.wheelCol, 0.12), tint(sh.wheelCol, -0.15)] : ['#161413', '#1f1c1a', '#161413'];   // (the buggy's wheels are wood)
-  if (!sh.noWheels) for (const u of sh.axles) for (const s of (sh.trike && u === frontU ? [0] : [-1, 1]))
+  if (!sh.noWheels) for (const u of sh.axles) for (const s of (sh.bike || (sh.trike && u === frontU) ? [0] : [-1, 1]))
     drawBox(cp, u - tr, u + tr, s * sh.track - sh.tw, s * sh.track + sh.tw, 0, tr * 2, wc[0], wc[1], wc[2], null);
   QFIRST = false;
   const plan = DRAW_PLAYER && !SHOWCASE && CAREER_CAR && CAREER_CAR.body < 85 && !sh.anim ? damagePlan(car, CAREER_CAR.uid, CAREER_CAR.body, paint) : null;
@@ -10199,6 +10234,7 @@ const ROSTER = [
   {id: 'beetle67', tier: 1, name: 'Volkswagen Beetle', year: 1967, hp: 44, kg: 840, drive: 'RWD', price: 3000, body: 'beetle67', paint: '#6fa3c7', years: [1958, 1977]},
   {id: 'beetle99', tier: 1, name: 'Volkswagen New Beetle', year: 1999, hp: 150, kg: 1270, drive: 'FWD', price: 1900, body: 'beetle99', paint: '#f1c232', years: [1998, 2010],
    factory: [['beetle99', '1.8T'], ['cabrio01', '2.0'], ['tdi', 'TDI']]},
+  {id: 'cr250', tier: 1, name: 'Honda CR250R', year: 2002, hp: 46, kg: 172, drive: 'RWD', price: 2600, body: 'cr250', paint: '#d3121a', years: [2000, 2007]},
   {id: 'atc110', tier: 1, name: 'Honda ATC110', year: 1981, hp: 7, kg: 177, drive: 'RWD', price: 600, body: 'atc110', paint: '#c4161c', years: [1979, 1985]},
   {id: 'mazdago', tier: 1, name: 'Mazda-Go DA', year: 1931, hp: 10, kg: 520, drive: 'RWD', price: 3500, body: 'mazdago', paint: '#2a3550', years: [1931, 1936]},
   {id: 'crv97', tier: 1, name: 'Honda CR-V', year: 1999, hp: 146, kg: 1360, drive: 'AWD', price: 2200, body: 'crv97', paint: '#2c5a3c', years: [1997, 2001]},
