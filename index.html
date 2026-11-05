@@ -6765,7 +6765,7 @@ function nightViaLights(cb) {
     for (const sd of [-0.65, 0.65]) cb(x + nx * sd, y + ny * sd, z, col);
   }
 }
-/* The traffic round the loop, keeping right. They do not look at anything but the bumper
+/* The traffic: dumb cars cruising both ways round the loop, keeping right. They do not look at anything but the bumper
    right in front of them: they change lanes when they feel like it (with a late blinker, none, or the wrong one), crawl
    for no reason, stop dead, speed up, wobble in their lane, and now and then wander over the center line. You and the
    racers have to get round them. Hit one and it spins off, and you lose the speed you shared with it. */
