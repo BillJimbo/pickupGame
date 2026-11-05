@@ -469,6 +469,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
       <button type="button" data-map="suburb">Maple Grove</button>
       <button type="button" data-map="city">Downtown</button>
       <button type="button" data-map="night">Midnight City</button>
+      <button type="button" data-map="freeway">Freeway</button>
       <button type="button" data-map="trail">Boulder Canyon</button>
     </div>
     <p class="tt-hint" id="mapHint"></p>
@@ -2303,8 +2304,8 @@ const NIGHT_PTS = [[100, 0, 0, 7.5, 0, 4.4], [750, 0, 16, 7.5, 0, 4.4], [750, 22
   [150, 220, 16, 7.5, 0, 4.4], [150, 100, 16, 7.5, 0, 4.4], [-50, 100, 16, 7.5, 0, 4.4], [-50, 0, 16, 7.5, 0, 4.4]];
 // The driven line (straights in 6 m pieces, curves in 1 m ones, so the road raster has no wedges on a tight corner's
 // outside) and the legs: straight strips of road with their widths and heights, what the walls and the height map use
-const { NIGHT_ROUTE, NIGHT_LEGS } = (() => {
-  const P = NIGHT_PTS, n = P.length, turn = [], route = [], legPts = [];
+function nightLayout(P) {
+  const n = P.length, turn = [], route = [], legPts = [];
   for (let i = 0; i < n; i++) {
     const a = P[(i - 1 + n) % n], b = P[i], c = P[(i + 1) % n], ax = b[0] - a[0], ay = b[1] - a[1], cx = c[0] - b[0], cy = c[1] - b[1], la = Math.hypot(ax, ay), lc = Math.hypot(cx, cy);
     const ux = ax / la, uy = ay / la, vx = cx / lc, vy = cy / lc, ang = Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy), t = b[2] ? b[2] * Math.tan(Math.abs(ang) / 2) : 0;
@@ -2341,13 +2342,27 @@ const { NIGHT_ROUTE, NIGHT_LEGS } = (() => {
     const b = pts[(i + 1) % pts.length], len = Math.hypot(b.x - a.x, b.y - a.y);
     return {ax: a.x, ay: a.y, bx: b.x, by: b.y, len, dx: (b.x - a.x) / len, dy: (b.y - a.y) / len, a, b};
   });
-  return {NIGHT_ROUTE: route, NIGHT_LEGS: legs};
-})();
+  return {route, legs};
+}
+// The freeway: a one-way, four-lane raised road, about 10 km round, all long sweeps (radius 250-400 m), for the Test Track's
+// free drive only. The loop just keeps going: no laps, no start line, nobody racing. It reuses everything Midnight City
+// has (the walls, lamps, gantries, traffic) with every leg built like the city's highway.
+const NIGHT_FREE_PTS = [[0, 0, 0, 7.5, 7, 2.2], [1800, 0, 300, 7.5, 7, 2.2], [2600, 500, 400, 7.5, 7, 2.2], [2600, 1400, 300, 7.5, 7, 2.2], [1900, 1900, 250, 7.5, 7, 2.2], [1200, 1500, 250, 7.5, 7, 2.2],
+  [600, 2000, 250, 7.5, 7, 2.2], [-300, 1800, 300, 7.5, 7, 2.2], [-900, 1000, 350, 7.5, 7, 2.2], [-700, 0, 300, 7.5, 7, 2.2]];
+const NIGHT_CITY = nightLayout(NIGHT_PTS), NIGHT_FREE = nightLayout(NIGHT_FREE_PTS);
+let NIGHT_ROUTE = NIGHT_CITY.route, NIGHT_LEGS = NIGHT_CITY.legs;
 // The tunnel (the leg with both ends marked: a seventh number in NIGHT_PTS) and the overpasses: raised roads that cross
 // over the streets you drive, purely scenery with lights moving along them. [x0, y0, x1, y1, height at each end]
-const NIGHT_TUN = NIGHT_LEGS.find(g => g.a.tun && g.b.tun);
-const NIGHT_VIA = [[450, 769, 450, -300, 10, 7.2], [459, 110, 1250, 110, 7.6, 7.4]].map(([ax, ay, bx, by, z0, z1]) => { const len = Math.hypot(bx - ax, by - ay); return {ax, ay, bx, by, z0, z1, len, dx: (bx - ax) / len, dy: (by - ay) / len, w: 9}; });
-const isNightMap = () => MAP_KIND === 'night' || MAP_KIND === 'nightR';
+const NIGHT_VIAS = [[450, 769, 450, -300, 10, 7.2], [459, 110, 1250, 110, 7.6, 7.4]].map(([ax, ay, bx, by, z0, z1]) => { const len = Math.hypot(bx - ax, by - ay); return {ax, ay, bx, by, z0, z1, len, dx: (bx - ax) / len, dy: (by - ay) / len, w: 9}; });
+let NIGHT_TUN = NIGHT_CITY.legs.find(g => g.a.tun && g.b.tun), NIGHT_VIA = NIGHT_VIAS;   // (the freeway has neither)
+const isNightMap = () => MAP_KIND === 'night' || MAP_KIND === 'nightR' || MAP_KIND === 'freeway' || MAP_KIND === 'freewayR';
+const isFreewayMap = () => MAP_KIND === 'freeway' || MAP_KIND === 'freewayR';
+// Switch the night code over to the city's or the freeway's layout (before the route is built)
+function useNightLayout(free) {
+  const L = free ? NIGHT_FREE : NIGHT_CITY;
+  NIGHT_ROUTE = L.route; NIGHT_LEGS = L.legs;
+  NIGHT_TUN = free ? null : NIGHT_CITY.legs.find(g => g.a.tun && g.b.tun); NIGHT_VIA = free ? [] : NIGHT_VIAS;
+}
 const isFlatMap = k => k === 'oval' || k === 'ovalR' || k === 'airfield';
 // The loose-surface maps: the dirt scramble course and the rally stage, both ways
 // Boulder Canyon's rock trail (see trailData): about 5.4 km of narrow dirt looping through the canyon, and the rivers it fords
@@ -2420,14 +2435,15 @@ const isPlot = () => MAP_KIND === 'plot' || MAP_KIND === 'plotR';
 function setMap(kind) {
   if (MAP_KIND === kind) return;
   MAP_KIND = kind;
-  CFG.RW = kind === 'trail' ? 3.4 : kind === 'night' || kind === 'nightR' ? 7.5 : kind === 'forest' || kind === 'forestR' ? 3.6 : kind === 'suburb' || kind === 'rally' || kind === 'rallyR' || kind === 'pass' || kind === 'passR' ? 4 : isFlatMap(kind) ? 6 : 5;   // narrow streets and mountain roads, a wide speedway and airfield
+  CFG.RW = kind === 'trail' ? 3.4 : kind === 'night' || kind === 'nightR' || kind === 'freeway' || kind === 'freewayR' ? 7.5 : kind === 'forest' || kind === 'forestR' ? 3.6 : kind === 'suburb' || kind === 'rally' || kind === 'rallyR' || kind === 'pass' || kind === 'passR' ? 4 : isFlatMap(kind) ? 6 : 5;   // narrow streets and mountain roads, a wide speedway and airfield
+  if (isNightMap()) useNightLayout(kind === 'freeway' || kind === 'freewayR');
   if (kind === 'suburb' || kind === 'city') buildNetwork(kind === 'city' ? CITY_SEGS : SUBURB_SEGS);
-  else buildRoute(kind === 'trail' ? TRAIL_ROUTE : kind === 'night' ? NIGHT_ROUTE : kind === 'nightR' ? reversed(NIGHT_ROUTE) : kind === 'lot' ? LOT_ROUTE : kind === 'strip' ? STRIP_ROUTE
+  else buildRoute(kind === 'trail' ? TRAIL_ROUTE : kind === 'night' || kind === 'freeway' ? NIGHT_ROUTE : kind === 'nightR' || kind === 'freewayR' ? reversed(NIGHT_ROUTE) : kind === 'lot' ? LOT_ROUTE : kind === 'strip' ? STRIP_ROUTE
     : kind === 'circuitR' ? reversed(CIRCUIT_ROUTE) : kind === 'short' ? SHORT_ROUTE : kind === 'shortR' ? reversed(SHORT_ROUTE)
     : kind === 'plot' ? PLOT_ROUTE : kind === 'plotR' ? reversed(PLOT_ROUTE) : kind === 'dirt' ? DIRT_ROUTE : kind === 'rally' ? RALLY_ROUTE : kind === 'rallyR' ? reversed(RALLY_ROUTE) : kind === 'forest' ? FOREST_ROUTE : kind === 'forestR' ? reversed(FOREST_ROUTE) : kind === 'oval' ? OVAL_ROUTE : kind === 'ovalR' ? reversed(OVAL_ROUTE)
     : kind === 'airfield' ? AIRFIELD_ROUTE : kind === 'pass' ? PASS_ROUTE : kind === 'passR' ? reversed(PASS_ROUTE) : CIRCUIT_ROUTE);
   DIRT_BALES.length = 0; if (isDirtMap(kind) && kind !== 'forest' && kind !== 'forestR' && kind !== 'trail') placeBales();   // (the forest stage has a crowd instead)
-  FANS = null; AIRF_CONES = null; NIGHT = null; NIGHT_RT = null; TRAIL_D = null;
+  FANS = null; AIRF_CONES = null; NIGHT = null; NIGHT_RT = null; NIGHT_H = null; TRAIL_D = null;
   CFG.offMax = kind === 'lot' || isPlot() ? 200 : 40;   // the lot is open pavement, so it is not bogged down near the lines
   RM.d = null;
 }
@@ -2441,7 +2457,7 @@ function elev(x, y) {
   if (MAP_KIND === 'forest' || MAP_KIND === 'forestR') return 1.6 * (9 * Math.sin(x / 170 + 0.6) * Math.cos(y / 150) + 5 * Math.sin(x / 70 - y / 90 + 1.7));   // the wooded hillside
   if (MAP_KIND === 'pass' || MAP_KIND === 'passR') return 2.6 * (9 * Math.sin(x / 170 + 0.6) * Math.cos(y / 150) + 5 * Math.sin(x / 70 - y / 90 + 1.7));   // the mountains
   if (MAP_KIND === 'trail') return trailElev(x, y);
-  if (MAP_KIND === 'night' || MAP_KIND === 'nightR') return nightElev(x, y);   // flat but for the raised highway
+  if (isNightMap()) return nightElev(x, y);   // flat but for the raised highway
   if (MAP_KIND === 'city') return 0;   // downtown is flat
   if (MAP_KIND === 'suburb') return 2.5 * Math.sin(x / 130 + 0.4) * Math.cos(y / 160) + 1.2 * Math.sin((x + y) / 70);   // gentle rises
   if (MAP_KIND === 'lot') {
@@ -6891,8 +6907,8 @@ function nightClear(x, y) {
 }
 // What is overhead at a point: 2 in the tunnel, 1 under an overpass, 0 open sky
 function nightCover(x, y) {
-  const T = NIGHT_TUN, tt = (x - T.ax) * T.dx + (y - T.ay) * T.dy;
-  if (tt > 0 && tt < T.len && Math.abs((x - T.ax) * -T.dy + (y - T.ay) * T.dx) < T.a.hw + T.a.wall + 1.5) return 2;
+  const T = NIGHT_TUN, tt = T ? (x - T.ax) * T.dx + (y - T.ay) * T.dy : 0;
+  if (T && tt > 0 && tt < T.len && Math.abs((x - T.ax) * -T.dy + (y - T.ay) * T.dx) < T.a.hw + T.a.wall + 1.5) return 2;
   for (const v of NIGHT_VIA) { const t = (x - v.ax) * v.dx + (y - v.ay) * v.dy; if (t > 0 && t < v.len && Math.abs((x - v.ax) * -v.dy + (y - v.ay) * v.dx) < v.w) return 1; }
   return 0;
 }
@@ -6966,7 +6982,7 @@ function nightData() {
       }
     }
   }
-  const keepOut = [{x: NIGHT_TUN.ax, y: NIGHT_TUN.ay, dx: NIGHT_TUN.dx, dy: NIGHT_TUN.dy, hw: NIGHT_TUN.a.hw + NIGHT_TUN.a.wall + 3, len: NIGHT_TUN.len, wall: 0}].concat(NIGHT_VIA.map(v => ({x: v.ax, y: v.ay, dx: v.dx, dy: v.dy, hw: v.w + 1.5, len: v.len, wall: 0})));
+  const keepOut = (NIGHT_TUN ? [{x: NIGHT_TUN.ax, y: NIGHT_TUN.ay, dx: NIGHT_TUN.dx, dy: NIGHT_TUN.dy, hw: NIGHT_TUN.a.hw + NIGHT_TUN.a.wall + 3, len: NIGHT_TUN.len, wall: 0}] : []).concat(NIGHT_VIA.map(v => ({x: v.ax, y: v.ay, dx: v.dx, dy: v.dy, hw: v.w + 1.5, len: v.len, wall: 0})));
   const inKeep = (x, y) => keepOut.some(q => { const t = (x - q.x) * q.dx + (y - q.y) * q.dy; return t > -3 && t < q.len + 3 && Math.abs((x - q.x) * -q.dy + (y - q.y) * q.dx) < q.hw; });
   const inStub = (x, y, m) => stubs.some(q => { const t = (x - q.x) * q.dx + (y - q.y) * q.dy, o = (x - q.x) * -q.dy + (y - q.y) * q.dx; return t > 0 && t < q.wall + q.len + m && Math.abs(o) < q.hw + m; });
   // A block: its footprint must clear the walled road, the side streets and every other block
@@ -7052,7 +7068,7 @@ function nightData() {
   const halos = [];
   // The tunnel: a concrete box the road runs through, with dark tiled walls, a low roof and a row of dim sodium lights,
   // under office blocks standing on its roof, so the street dives under the buildings. In 10 m pieces, for the depth sort.
-  {
+  if (NIGHT_TUN) {
     const T = NIGHT_TUN, E = T.a.hw + T.a.wall, roof = 6.5, slab = 9, nx = -T.dy, ny = T.dx, wallC = 'rgb(30,29,27)', wallT = 'rgb(38,37,35)', wallE = 'rgb(24,24,24)';
     for (let t = 0; t < T.len; t += 10) {
       const x = T.ax + T.dx * (t + 5), y = T.ay + T.dy * (t + 5), cp = (o) => ({x: x + nx * o, y: y + ny * o, hx: T.dx, hy: T.dy}), Q = (u, o, z) => [x + T.dx * u + nx * o, y + T.dy * u + ny * o, z];
@@ -7105,18 +7121,23 @@ function nightData() {
   // The front rows along both sides of the road, then taller towers behind, and more filling the big block in the middle
   for (const side of [-1, 1]) {
     for (let u = 0; u < L;) {
+      if (isFreewayMap() && rnd() < 0.7) { u += 30 + rnd() * 50; continue; }   // (the freeway's edges are mostly open, a block here and there)
       const w = 16 + rnd() * 30, d = 14 + rnd() * 18, h = 11 + Math.pow(rnd(), 1.7) * 72, hw = nightHw(u), high = nightOneWay(u), b = place(u, side, hw + (high ? 15 : 7.2) + d / 2, w, d, h, 399);
       if (b) decorate(b, !high);
       u += (b ? w + 0.8 : 7);
     }
     for (let u = 8; u < L;) {
+      if (isFreewayMap() && rnd() < 0.8) { u += 40 + rnd() * 80; continue; }
       const w = 20 + rnd() * 24, d = 20 + rnd() * 22, b = place(u, side, nightHw(u) + 44 + d / 2 + rnd() * 40, w, d, 26 + Math.pow(rnd(), 1.3) * 110, 800);
       if (b) decorate(b, false);
       u += (b ? w + 12 : 9);
     }
   }
-  for (let k = 0; k < 500 && buildings.length < 460; k++) {
-    const w = 22 + rnd() * 26, d = 22 + rnd() * 26, b = blockAt(-280 + rnd() * 1300, -60 + rnd() * 860, 1, 0, rnd() < 0.5 ? 1 : -1, w, d, 24 + Math.pow(rnd(), 1.4) * 120, 800, true);
+  let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+  for (const g of NIGHT_LEGS) { bx0 = Math.min(bx0, g.ax); bx1 = Math.max(bx1, g.ax); by0 = Math.min(by0, g.ay); by1 = Math.max(by1, g.ay); }
+  const fx = isFreewayMap() ? [bx0, bx1 - bx0] : [-280, 1300], fy = isFreewayMap() ? [by0, by1 - by0] : [-60, 860];   // (the city's fill box is fixed)
+  for (let k = 0; k < (isFreewayMap() ? 1500 : 500) && buildings.length < (isFreewayMap() ? 900 : 460); k++) {
+    const w = 22 + rnd() * 26, d = 22 + rnd() * 26, b = blockAt(fx[0] + rnd() * fx[1], fy[0] + rnd() * fy[1], 1, 0, rnd() < 0.5 ? 1 : -1, w, d, 24 + Math.pow(rnd(), 1.4) * 120, 800, true);
     if (b) decorate(b, false);
   }
   // The barriers: a straight line down each side of every leg, meeting the next leg's at the corner (square at a city
@@ -7184,7 +7205,8 @@ function nightData() {
   };
   const R = NIGHT_RT || nightRouteInfo();
   const signAt = (u, words) => { const q = pointAt(((u % L) + L) % L); gantry(q.x, q.y, q.dx, q.dy, nightHw(u), words); };
-  signAt(R.ow0 - 120, 'HIGHWAY 9'); signAt(R.ow0 - 30, 'ON RAMP'); signAt((R.ow0 + R.ow1) / 2, 'CITY 9'); signAt(R.ow1 - 240, 'EXIT AHEAD'); signAt(R.ow1 - 90, 'EXIT');
+  if (isFreewayMap()) ['FREEWAY', 'EXIT 24', 'DOWNTOWN', 'AIRPORT', 'EXIT 49', 'HARBOR', 'FREEWAY 9', 'NEXT EXIT'].forEach((w, k) => signAt(400 + k * (L - 600) / 8, w));
+  else { signAt(R.ow0 - 120, 'HIGHWAY 9'); signAt(R.ow0 - 30, 'ON RAMP'); signAt((R.ow0 + R.ow1) / 2, 'CITY 9'); signAt(R.ow1 - 240, 'EXIT AHEAD'); signAt(R.ow1 - 90, 'EXIT'); }
   // The ground's light: lamp and neon pools on a 2 m grid
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   for (const g of SEGS) { x0 = Math.min(x0, g.ax); x1 = Math.max(x1, g.ax); y0 = Math.min(y0, g.ay); y1 = Math.max(y1, g.ay); }
@@ -7433,11 +7455,11 @@ function makeNightTraffic() {
   const n = LOWG() ? 40 : 64, L = ROUTE_LEN, bodies = NIGHT_TRAFFIC_CARS.filter(b => CARS[b]), cars = [];
   const paints = PAINTS.filter(p => p[1]).map(p => p[1]);
   for (let i = 0; i < n; i++) {
-    const dir = i % 2 ? 1 : -1, lane = dir * (Math.random() < 0.55 ? 1.9 : 5.6), body = bodies[Math.floor(Math.random() * bodies.length)];
+    const dir = isFreewayMap() || i % 2 ? 1 : -1, lane = dir * (Math.random() < 0.55 ? 1.9 : 5.6), body = bodies[Math.floor(Math.random() * bodies.length)];
     // (spread round the loop, but clear of the start line, and oncoming cars never on the one-way highway)
     let u = 90 + (L - 220) * (i + Math.random() * 0.8) / n;
     if (dir < 0 && nightOneWay(u)) { const R = NIGHT_RT; u = R.ow0 - 30 - Math.random() * 700; if (u < 90) u = R.ow1 + 30 + Math.random() * 100; }
-    cars.push({u, dir, lat: lane, laneT: lane, home: lane, v: 9, vPrev: 9, cruise: 9 + Math.random() * 8, vT: 12, body, paint: Math.random() < 0.45 ? CARS[body].paint || paints[0] : paints[Math.floor(Math.random() * paints.length)], ev: 1 + Math.random() * 10, modeT: 0, blink: 0, blinkT: 0, latV: 0, wob: Math.random() * 6, hit: 0, wreck: null, d: 999});
+    cars.push({u, dir, lat: lane, laneT: lane, home: lane, v: 9, vPrev: 9, cruise: 9 + Math.random() * 8 + (isFreewayMap() ? 9 : 0), vT: 12, body, paint: Math.random() < 0.45 ? CARS[body].paint || paints[0] : paints[Math.floor(Math.random() * paints.length)], ev: 1 + Math.random() * 10, modeT: 0, blink: 0, blinkT: 0, latV: 0, wob: Math.random() * 6, hit: 0, wreck: null, d: 999});
   }
   return cars;
 }
@@ -9459,7 +9481,8 @@ function mapIcon(kind) {
   else if (kind === 'dirt') add(DIRT_ROUTE, true);
   else if (kind === 'rally') add(RALLY_ROUTE, true);
   else if (kind === 'forest') add(FOREST_ROUTE, true);
-  else if (kind === 'night') add(NIGHT_ROUTE, true);
+  else if (kind === 'night') add(NIGHT_CITY.route, true);
+  else if (kind === 'freeway') add(NIGHT_FREE.route, true);
   else if (kind === 'trail') { add(TRAIL_ROUTE, true); for (const R of TRAIL_RIVERS) add(R.pts, false, true); }
   else if (kind === 'oval') add(OVAL_ROUTE, true);
   else if (kind === 'airfield') add(AIRFIELD_ROUTE, true);
@@ -9483,7 +9506,7 @@ function mapIcon(kind) {
 document.querySelectorAll('#mapPick [data-map]').forEach(b => b.insertAdjacentHTML('afterbegin', mapIcon(b.dataset.map)));
 if (!SCORING) document.querySelectorAll('#stats .score').forEach(r => { r.style.display = 'none'; });
 function showIntro() {
-  const mapName = TT_MAP === 'trail' ? 'Boulder Canyon, a rock trail with river fords' : TT_MAP === 'night' ? 'Midnight City, with traffic' : TT_MAP === 'lot' ? 'the training lot' : TT_MAP === 'suburb' ? 'Maple Grove' : TT_MAP === 'city' ? 'downtown' : TT_MAP === 'short' ? 'the club circuit' : TT_MAP === 'plot' ? 'the parking lot' : TT_MAP === 'dirt' ? 'the dirt course' : TT_MAP === 'rally' ? 'the rally stage' : TT_MAP === 'forest' ? 'the forest stage' : TT_MAP === 'oval' ? 'the speedway' : TT_MAP === 'airfield' ? 'the airfield' : TT_MAP === 'pass' ? 'the mountain pass' : 'the circuit';
+  const mapName = TT_MAP === 'trail' ? 'Boulder Canyon, a rock trail with river fords' : TT_MAP === 'night' ? 'Midnight City, with traffic' : TT_MAP === 'freeway' ? 'the freeway, with traffic' : TT_MAP === 'lot' ? 'the training lot' : TT_MAP === 'suburb' ? 'Maple Grove' : TT_MAP === 'city' ? 'downtown' : TT_MAP === 'short' ? 'the club circuit' : TT_MAP === 'plot' ? 'the parking lot' : TT_MAP === 'dirt' ? 'the dirt course' : TT_MAP === 'rally' ? 'the rally stage' : TT_MAP === 'forest' ? 'the forest stage' : TT_MAP === 'oval' ? 'the speedway' : TT_MAP === 'airfield' ? 'the airfield' : TT_MAP === 'pass' ? 'the mountain pass' : 'the circuit';
   $('overlay').querySelector('.lbl').textContent = 'Test Track';
   showOverlay(CFG.name + ' on ' + mapName,
     `<p>Free drive: no clock, no laps and no penalties. Take it wherever you like.${S.rain ? (isPassMap() ? ' <b>It is snowing.</b>' : ' <b>It is raining.</b>') : ''}</p>${CFG.modNames.length ? '<p>Mods fitted: ' + CFG.modNames.join(', ') + '.</p>' : ''}
@@ -11467,7 +11490,7 @@ function drawRaceMap(free) {
 let TT_LAPS = 1, TT_MODE = 'free', TT_RAIN = false, TT_TIME = 'day', GHOST = null, GHOST_RACE = false, TT_USED = null, LAST_RUN = null;
 const GHOST_DT = 0.05;
 const LOOP_MAPS = ['circuit', 'short', 'plot', 'dirt', 'rally', 'forest', 'oval', 'airfield', 'pass', 'night', 'trail'];
-const MAP_NAMES = {circuit: 'Circuit', short: 'Club circuit', plot: 'Parking lot', dirt: 'Dirt course', rally: 'Rally stage', forest: 'Forest stage', oval: 'Speedway', airfield: 'Airfield', pass: 'Mountain pass', night: 'Midnight City', trail: 'Boulder Canyon'};
+const MAP_NAMES = {circuit: 'Circuit', short: 'Club circuit', plot: 'Parking lot', dirt: 'Dirt course', rally: 'Rally stage', forest: 'Forest stage', oval: 'Speedway', airfield: 'Airfield', pass: 'Mountain pass', night: 'Midnight City', freeway: 'Freeway', trail: 'Boulder Canyon'};
 const ttRunOn = () => TT_MODE === 'street' || (TT_MODE === 'timed' && LOOP_MAPS.includes(TT_MAP));
 function ttRunEvent() {
   if (TT_MODE === 'street' && !GHOST_RACE) return {id: 'ttstreet', ttStreet: true, map: TT_MAP, laps: TT_LAPS, prize: 0, rain: TT_RAIN ? 1 : 0, tod: TT_TIME, name: 'Race',
@@ -11597,9 +11620,9 @@ function updateTTSetup() {
   document.querySelectorAll('#mapPick [data-map]').forEach(b => { const off = ((timed || street) && !LOOP_MAPS.includes(b.dataset.map)) || ghost; b.classList.toggle('off', off); b.title = off ? (ghost ? 'The ghost picks the track' : street ? 'Races need a loop track' : 'Timed runs need a loop track') : ''; });
   document.querySelectorAll('#wxPick button').forEach(b => { b.classList.toggle('off', ghost); });
   // Time of day: the ghost picks it too; Midnight City is always night
-  const fixedTime = ghost || TT_MAP === 'night' || TT_MAP === 'nightR';
+  const fixedTime = ghost || TT_MAP === 'night' || TT_MAP === 'nightR' || TT_MAP === 'freeway';
   document.querySelectorAll('#todPick [data-tod]').forEach(b => { b.classList.toggle('on', b.dataset.tod === TT_TIME && !fixedTime); b.classList.toggle('off', fixedTime); });
-  $('todHint').textContent = ghost ? 'The ghost picks the time of day.' : fixedTime ? 'Midnight City is always night.' : TOD[TT_TIME].hint;
+  $('todHint').textContent = ghost ? 'The ghost picks the time of day.' : fixedTime ? 'Midnight City and the freeway are always night.' : TOD[TT_TIME].hint;
   $('mapHint').textContent = ghost ? 'The ghost picks the track.' : street ? 'Races need a loop track: the training lot is the smallest, the towns are free drive only.' : timed ? 'Timed runs and ghosts need a loop track: the training lot and the towns are free drive only.' : '';
   $('mapHint').hidden = !$('mapHint').textContent;
   const pass = TT_MAP === 'pass';
