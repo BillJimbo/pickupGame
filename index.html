@@ -2884,7 +2884,7 @@ Object.assign(SOUND, {
   insight00: {pk1: [150, 5], pk2: [430, 7], lp: [300, 0.32, 500], saw: 0.5, sq: 0.36, nbp: [470, 0.3], noise: [0.04, 0.22], lope: 0.1, tick: 0.03, gain: 0.85, rasp: 0.7}
 });
 // Doppler shift for the trackside camera: the engine's pitch rises as the car comes toward the camera and drops as it goes
-// away, by the car's speed along the line between them (an exaggerated 230 m/s stands in for the speed of sound, so it is
+// away, by the car's speed along the line between them (an exaggerated 140 m/s stands in for the speed of sound, so it is
 // plain to hear at road speeds), and it gets louder as it nears. Other views hear it unshifted. Returns [pitch, loudness].
 function dopplerOf() {
   const on = VIEW === 'cinema' && !SHOWCASE && camS && camS.cin;
@@ -2892,7 +2892,7 @@ function dopplerOf() {
   const dx = S.x - CAMX, dy = S.y - CAMY, d = Math.max(Math.hypot(dx, dy), 1), c = Math.cos(S.h), sn = Math.sin(S.h);
   const wx = S.v * c - (S.vy || 0) * sn, wy = S.v * sn + (S.vy || 0) * c;
   const away = (wx * dx + wy * dy) / d;   // + moving away from the camera
-  const tgt = clamp(230 / (230 + away), 0.7, 1.4);
+  const tgt = clamp(140 / (140 + away), 0.65, 1.5);
   if (AU) AU.dop = (AU.dop || 1) + (tgt - (AU.dop || 1)) * 0.4;
   return [AU ? AU.dop : tgt, clamp(14 / d, 0.3, 1.3)];
 }
