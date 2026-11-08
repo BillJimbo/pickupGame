@@ -2157,8 +2157,7 @@ CARS.celica.shape = {track: 0.73, tw: 0.095, axles: [-1.26, 1.26], hub: '#a9aaa6
   // the hood over the front wheels, rising in steps to the cowl, with the arch left open below for the tire
   full('p', 1.36, 1.62, 0.85, 0.42, 0.67), full('p', 1.12, 1.36, 0.85, 0.42, 0.73), full('p', 0.9, 1.12, 0.85, 0.42, 0.79),
   full('k', 0.9, 1.0, 0.78, 0.79, 0.84),                                                                 // the black cowl panel
-  // the pop-ups, raised
-  sym('pp', 1.72, 1.98, 0.36, 0.8, 0.6, 0.78), sym('pl', 1.98, 2.0, 0.38, 0.57, 0.63, 0.76), sym('pl', 1.98, 2.0, 0.59, 0.78, 0.63, 0.76),
+  // (the pop-up headlamps are down, flush with the hood)
   // doors and sills, the rear quarters over the back wheels, the trunk and the tail
   full('p', -0.9, 0.9, 0.85, 0.22, 0.86), full('p', -1.62, -0.9, 0.85, 0.42, 0.89),
   full('p', -2.1, -1.62, 0.85, 0.22, 0.93), full('p', -1.62, -1.5, 0.85, 0.42, 0.93),
@@ -2201,11 +2200,10 @@ CARS.buggy.specs[1] = 'Walk, trot and canter; 1,150 kg with the driver';
 // The 2016 WRX's model steps its greenhouse to show the rake, and the cab reads its windshield from the tallest glass
 // box, so the cockpit gets the same parts with one full-height windshield instead
 CARS.wrx16.cab3d = {parts: CARS.wrx16.shape.parts.filter(p => p[0] !== 'g').concat([['g', -1.55, 1.0, -0.82, 0.82, 0.86, 1.4]])};
-// (the Celica's nose here follows its outside model: the hood stepping down to the low nose, the raised pop-ups)
+// (the Celica's nose here follows its outside model: the hood stepping down to the low nose, the pop-ups down)
 CARS.celica.cab3d = {paint: '#2f6b6e', ix: {dash: '#3a3c41', trim: '#33353a', wheel: 3, cluster: 'box', style: 't180'}, parts: parts(
   full('k', 0.98, 1.04, 0.78, 0.79, 0.85), full('p', 1.0, 1.12, 0.85, 0.42, 0.79), full('p', 1.12, 1.36, 0.85, 0.42, 0.73),
   full('p', 1.36, 1.62, 0.85, 0.42, 0.67), full('p', 1.62, 2.12, 0.85, 0.3, 0.62),
-  sym('pp', 1.72, 1.98, 0.36, 0.8, 0.6, 0.78),
   full('g', -0.8, 1.0, 0.82, 0.9, 1.27), full('r', -0.8, 1.0, 0.84, 1.27, 1.33))};
 CARS.ram.cab3d = {paint: '#9e1b1f', ix: {dash: '#3b3e44', trim: '#2a2c30', wheel: 4, cluster: 'box'}, parts: parts(
   full('p', 1.25, 1.4, 0.98, 1.1, 1.47), full('p', 1.4, 3.2, 0.98, 1.1, 1.45), full('c', 3.2, 3.24, 0.62, 1.06, 1.14), full('c', 3.2, 3.24, 0.07, 0.7, 1.43),
@@ -8115,7 +8113,10 @@ function celMesh() {
   out.push(topP(0.955, 1.05, -0.74, 0.74, M.trim), topP(-1.53, -1.522, -0.74, 0.74, M.seam));     // the cowl, the trunk's front edge
   // Boxes: the raised pop-ups (painted covers on black housings), mirrors, wheel-well liners, the tailpipe
   for (const s of [-1, 1]) {
-    out.push(celRound(1.74, 1.952, ...(s > 0 ? [0.42, 0.79] : [-0.79, -0.42]), 0.58, 0.765, M.paint, M.trim, 0.025));   // a raised pop-up, black round its lamps
+    // a pop-up headlamp, down: its cover lies flush in the hood, outlined by its shut line
+    const pv = [0.42, 0.79].map(x => x * s);
+    out.push(topP(1.74, 1.952, pv[0] - 0.004 * s, pv[0] + 0.004 * s, M.seam), topP(1.74, 1.952, pv[1] - 0.004 * s, pv[1] + 0.004 * s, M.seam),
+      topP(1.74, 1.748, Math.min(...pv), Math.max(...pv), M.seam), topP(1.944, 1.952, Math.min(...pv), Math.max(...pv), M.seam));
     out.push(celRound(0.62, 0.74, ...(s > 0 ? [0.77, 0.91] : [-0.91, -0.77]), 0.9, 0.97, M.trim, M.trim, 0.03));           // a mirror
     for (const a of C.axles) out.push(...celBox(a - 0.36, a + 0.36, ...(s > 0 ? [0.595, 0.615] : [-0.615, -0.595]), 0.24, 0.69, {top: M.liner, side: M.liner, front: M.liner, back: M.liner}));
   }
