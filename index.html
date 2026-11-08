@@ -623,7 +623,7 @@ const CARS = {
   celica: {
     name: 'Celica', label: 'Celica trial', body: 'celica', year: 1991, drive: 'front',
     title: 'Circuit, five forward gears', power: '103 hp',
-    blurb: 'A 1991 Celica ST coupe in aquamarine pearl: the 4A-FE twin cam, a five-speed and front-wheel drive. Sensible, light, and happier than it looks when you rev it out.',
+    blurb: 'A 1991 Celica ST coupe in aquamarine pearl: the 4A-FE twin cam, a five-speed and front-wheel drive. Sensible, light, and happier than it looks when you rev it out. {k:lights} pops the headlights up.',
     specs: ['4A-FE 1.6: 103 hp at 6,000 rpm, 138 Nm at 3,200 rpm', 'Five-speed manual, front-wheel drive, 1,260 kg', 'Lighter, and it understeers when you push'],
     mass: 1260, r: 0.31, fd: 4.1,
     ratios: {1: 3.2, 2: 1.9, 3: 1.3, 4: 0.98, 5: 0.78, R: 3.4},
@@ -2149,6 +2149,8 @@ CARS.pickup.shape = {track: 0.7, tw: 0.11, axles: [-1.45, 1.35], parts: parts(
 // and a single tailpipe. The wheel arches are left open over the tires, which wear the ST's silver wheel covers.
 // The sail panels are kind 'r' so they draw after the glass beside them (as the roof does).
 CARS.celica.paint = '#2f6b6e';
+// The raised pop-ups for the box model (Classic), added while the lamps are up
+const CEL_POP_BOXES = parts(sym('pp', 1.72, 1.98, 0.36, 0.8, 0.6, 0.78), sym('pl', 1.98, 2.0, 0.38, 0.57, 0.63, 0.76), sym('pl', 1.98, 2.0, 0.59, 0.78, 0.63, 0.76));
 CARS.celica.shape = {track: 0.73, tw: 0.095, axles: [-1.26, 1.26], hub: '#a9aaa6', parts: parts(
   // the bumper and nose, each split into a middle and two corners for the depth sort
   nose(2.12, 2.22, 0.8, 0.22, 0.48, 0.42), full('k', 2.22, 2.235, 0.46, 0.26, 0.37),                    // bumper and its lower intake
@@ -3284,6 +3286,21 @@ function hoofbeats() {
   }
   S.hoofPrev = ph;
 }
+// The Celica's pop-up headlamps (L): S.popOn is the switch, S.pop how far the motors have swung them (0 down, 1 up,
+// 0.55 s either way). celPop() is how far up the lamps of the Celica being drawn are, eased: your own follow the switch,
+// any other Celica has them up at night. While they are down there is no headlight glow and no beams on the road.
+const POPUP_TIME = 0.55;
+function popupKey() {
+  if (CFG.body !== 'celica' || SHOWCASE) return;
+  S.popOn = !S.popOn; sfx('popup');
+  log(S.popOn ? 'Headlights up.' : 'Headlights down.');
+}
+function popupStep(dt) { S.pop = clamp((S.pop || 0) + (S.popOn ? 1 : -1) * dt / POPUP_TIME, 0, 1); }
+const popEase = t => t * t * t * (t * (t * 6 - 15) + 10);   // smootherstep: the motor eases them off the stops and back on
+function celPop() {
+  if (DRAW_PLAYER && !SHOWCASE) return popEase(S.pop || 0);
+  return (isNightMap() || S.tod === 'night') && !SHOWCASE ? 1 : 0;
+}
 function sfx(type, amount) {
   if (!AU) return;
   if (type === 'splash') {   // a body hitting water: a deep whump, a slap of water thrown up, and then the drops falling back, each its own
@@ -3398,6 +3415,16 @@ function sfx(type, amount) {
       env.gain.linearRampToValueAtTime(0.0001, t0 + at + 0.05);
     }
     src.start(t0); src.stop(t0 + Math.min(dur, at + 0.1));
+    return;
+  }
+  if (type === 'popup') {   // the headlamp motors: a small electric whir rising and settling, then the clunk of the stops
+    const c = AU.c, t0 = c.currentTime, o = c.createOscillator(), o2 = c.createOscillator(), fl = c.createBiquadFilter(), g = c.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(95, t0); o.frequency.linearRampToValueAtTime(165, t0 + 0.2); o.frequency.linearRampToValueAtTime(140, t0 + 0.5);
+    o2.type = 'square'; o2.frequency.setValueAtTime(380, t0); o2.frequency.linearRampToValueAtTime(620, t0 + 0.2); o2.frequency.linearRampToValueAtTime(540, t0 + 0.5);
+    fl.type = 'bandpass'; fl.frequency.value = 1100; fl.Q.value = 1.1;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.045, t0 + 0.05); g.gain.setValueAtTime(0.045, t0 + 0.44); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.56);
+    o.connect(fl); o2.connect(fl); fl.connect(g); g.connect(AU.master); o.start(t0); o2.start(t0); o.stop(t0 + 0.6); o2.stop(t0 + 0.6);
+    burst(0.05, 1500, 1.2, 0.3, 'bandpass', 0.54); burst(0.09, 150, 0.7, 0.45, 'lowpass', 0.54);
     return;
   }
   if (type === 'hop') { burst(0.28, 900, 0.8, 1.0); burst(0.06, 4000, 1.5, 0.7); burst(0.18, 90, 0.7, 1.2, 'lowpass'); return; }   // a pneumatic blast: whoosh, crack and a thump
@@ -3726,6 +3753,7 @@ function evTorque(dt) {
 function fuelStep(dt) {
   S.fuelRate = 0;
   S.odo = (S.odo || 0) + Math.abs(S.v) * dt;   // distance this drive, for the average economy
+  popupStep(dt);
   if (!S.engineOn || CFG.electric) return;
   const w = S.rpm * Math.PI / 30, carb = CFG.fuel === 'carb';
   const eff = CFG.eff || (CFG.diesel ? 0.36 : carb ? 0.24 : 0.28);
@@ -5201,7 +5229,7 @@ function drawTodGrade() {
   ctx.save();
   ctx.globalCompositeOperation = 'multiply';
   ctx.fillStyle = `rgb(${t.mul})`; ctx.fillRect(-P, -P, VW + 2 * P, VH + 2 * P);
-  if (t.lights && !CFG.horse) {   // two headlight beams along the road ahead, brightest near the car
+  if (t.lights && !CFG.horse && (CFG.body !== 'celica' || (S.pop || 0) > 0.85)) {   // two headlight beams along the road ahead, brightest near the car
     ctx.globalCompositeOperation = 'lighter';
     const c = Math.cos(S.h), s = Math.sin(S.h), rx = -s, ry = c, steps = 40, near = VIEW === 'cockpit' ? 3 : 4.5;   // (in the chase view the beams start past the nose, not over the truck)
     for (const side of [-0.7, 0.7]) {
@@ -6039,7 +6067,8 @@ const handDamage = (id, paint) => DRAW_PLAYER && !SHOWCASE && CAREER_CAR && CARE
   ? damagePlan({body: id, shape: CARS[id].sideShape}, CAREER_CAR.uid, CAREER_CAR.body, paint) : null;
 function drawShapeModelRaw(car) {
   const sh = car.shape, cp = {x: S.x, y: S.y, hx: Math.cos(S.h), hy: Math.sin(S.h)};
-  const parts = sh.anim && CFG.body === car.body ? sh.anim() : sh.parts;   // a horse's legs move with its stride
+  let parts = sh.anim && CFG.body === car.body ? sh.anim() : sh.parts;   // a horse's legs move with its stride
+  if (car.body === 'celica' && celPop() > 0.5) parts = parts.concat(CEL_POP_BOXES);   // (Classic: the pop-ups snap up half way)
   const len = Math.max(...parts.map(p => p[2])) - Math.min(...parts.map(p => p[1]));
   if (!SHOWCASE) shadowUnder(cp, len / 2 + 0.1, 1.0);
   const paint = (!SHOWCASE && CFG.body === car.body && CFG.paint) || car.paint;
@@ -7431,8 +7460,9 @@ function drawCarLights(b) {
   const s = lampSpots(b), c = Math.cos(S.h), sn = Math.sin(S.h), o = NIGHT_CAR || {}, dx = CAMX - S.x, dy = CAMY - S.y, d = Math.hypot(dx, dy) || 1, cs = (dx * c + dy * sn) / d;
   const R = RIGID, at = (u, v) => { if (!R) return [S.x + c * u - sn * v, S.y + sn * u + c * v, 0]; const q = rigidPt(R, u, v, s.z); return [q[0], q[1], q[2] - elev(q[0], q[1]) - s.z]; };   // (the third: how far the body's frame puts it from the ground's height)
   const prev = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'lighter';
+  const front = b !== 'celica' || celPop() > 0.85;   // (a Celica's lamps only shine while its pop-ups are up)
   for (const v of s.v < 0.1 ? [0] : [-s.v, s.v]) {
-    if (cs > -0.15) { const q = at(s.fr, v); drawGlow(q[0], q[1], s.z + q[2], 0.35 + 1.2 * Math.max(0, cs), 255, 236, 190, 0.45 + 0.55 * Math.max(0, cs)); }
+    if (cs > -0.15 && front) { const q = at(s.fr, v); drawGlow(q[0], q[1], s.z + q[2], 0.35 + 1.2 * Math.max(0, cs), 255, 236, 190, 0.45 + 0.55 * Math.max(0, cs)); }
     if (cs < 0.15) { const q = at(s.re, v); drawGlow(q[0], q[1], s.z + 0.04 + q[2], o.brake ? 1.05 : 0.5, 255, 44, 36, o.brake ? 1 : 0.8); }
     if (o.blink && Math.sign(v) === o.blink && Math.floor(performance.now() / 330) % 2) { const q = at(cs > 0 ? s.fr : s.re, v * 1.08); drawGlow(q[0], q[1], s.z + q[2], 0.6, 255, 170, 30); }
   }
@@ -8054,7 +8084,7 @@ function celRound(u0, u1, v0, v1, z0, z1, mat, faceMat = mat, rr = 0.02) {
 let CEL_MESH = null;
 function celMesh() {
   if (CEL_MESH) return CEL_MESH;
-  const C = CEL, M = CEL_MATS, out = [];
+  const C = CEL, M = CEL_MATS, out = [], pods = [], pocket = [];
   // The lower body: stations along the car, dense round the wheel arches and the round ends
   let U = [];
   for (let k = 0; k <= 12; k++) U.push(C.uT0 - (C.uT0 - C.uT) * Math.pow(Math.cos(k / 12 * Math.PI / 2), 2 / C.mT));
@@ -8120,6 +8150,9 @@ function celMesh() {
     out.push(line(a => uB + (uL - uB) * a, (a, b) => vIn - 0.004 + 0.008 * b, 10),                                            // inner edge
       line(a => uB + (uL - uB) * a, (a, b) => vEdge(uB + (uL - uB) * a) - 0.004 + 0.008 * b, 10),                              // outer edge
       line(a => uB + 0.008 * a, (a, b) => vIn + (vEdge(uB) - vIn) * b, 1), line(a => uL - 0.008 + 0.008 * a, (a, b) => vIn + (vEdge(uL) - vIn) * b, 1));   // back edge, the lip
+    // raised (L): the pod, body color with a black bezel round its lamps, swung up out of a dark pocket in the hood
+    pods.push(celRound(1.74, 1.952, ...(s > 0 ? [0.42, 0.79] : [-0.79, -0.42]), 0.58, 0.765, M.paint, M.trim, 0.025));
+    pocket.push(celPatch((a, b) => { const u = uB + 0.006 + (1.968 - uB - 0.006) * a; return C.top(u, s * (vIn + 0.006 + (vEdge(u) - vIn - 0.012) * b)); }, 6, 4, 0.0015, M.liner));   // (just the pod's own opening)
     out.push(celRound(0.62, 0.74, ...(s > 0 ? [0.77, 0.91] : [-0.91, -0.77]), 0.9, 0.97, M.trim, M.trim, 0.03));           // a mirror
     for (const a of C.axles) out.push(...celBox(a - 0.36, a + 0.36, ...(s > 0 ? [0.595, 0.615] : [-0.615, -0.595]), 0.24, 0.69, {top: M.liner, side: M.liner, front: M.liner, back: M.liner}));
   }
@@ -8128,14 +8161,13 @@ function celMesh() {
   out.push(celRound(-2.09, -1.86, -0.7, 0.7, 0.995, 1.035, M.paint, M.paint, 0.016));
   for (const s of [-1, 1]) out.push(celRound(-2.03, -1.92, ...(s > 0 ? [0.5, 0.58] : [-0.58, -0.5]), 0.9, 1.005, M.paint, M.paint, 0.02));
   out.push(...celBox(-2.094, -2.082, -0.2, 0.2, 1.004, 1.026, {top: M.red, side: M.red, front: M.red, back: M.red}));
-  // The lenses, one box per lamp, in the order of CARS.celica.shape's 'pl' parts (so a smashed one matches the damage plan)
-  const lenses = CARS.celica.shape.parts.map((q, i) => [q, i]).filter(([q]) => q[0] === 'pl').map(([q, i]) => {
-    const inner = Math.min(Math.abs(q[3]), Math.abs(q[4])) < 0.5, [a, b] = inner ? [0.435, 0.6] : [0.61, 0.775], sg = q[3] > 0 ? 1 : -1;
-    return {i, boxes: celBox(1.945, 1.958, sg > 0 ? a : -b, sg > 0 ? b : -a, 0.6, 0.745, {top: M.trim, side: M.trim, front: M.lens, back: M.trim}, 6e-5)}; });
+  // The pop-ups' lenses, two to a pod (i: the shape part a damage plan would smash; none, as the shape's lamps are down)
+  const lenses = [[0.435, 0.6, 1], [0.435, 0.6, -1], [0.61, 0.775, 1], [0.61, 0.775, -1]].map(([a, b, sg]) => ({i: -1,
+    boxes: celBox(1.945, 1.958, sg > 0 ? a : -b, sg > 0 ? b : -a, 0.6, 0.745, {top: M.trim, side: M.trim, front: M.lens, back: M.trim}, 6e-5)}));
   // A wheel: the tire's profile turned round its axle (radius as a share of the tire's, offset outward), then the cover
   const prof = [[0.6, -0.095], [0.9, -0.095], [0.97, -0.083], [1, -0.06], [1, 0.06], [0.97, 0.083], [0.9, 0.095], [0.62, 0.095], [0.62, 0.097], [0.5, 0.104], [0.35, 0.111], [0.18, 0.115], [0, 0.116]];
   const profN = prof.map((q, k) => { const a = prof[Math.max(0, k - 1)], b = prof[Math.min(prof.length - 1, k + 1)], nr = b[1] - a[1], nw = -(b[0] - a[0]), l = Math.hypot(nr, nw) || 1; return [nr / l, nw / l]; });   // square to the profile
-  CEL_MESH = {grids: out, lenses, prof, profN, profMat: prof.map((p, k) => k < 7 ? M.tire : M.cover)};
+  CEL_MESH = {grids: out, lenses, pods, pocket, prof, profN, profMat: prof.map((p, k) => k < 7 ? M.tire : M.cover)};
   return CEL_MESH;
 }
 // Damage on a career car: the plan's patches as colored patches over the panels (cached per plan)
@@ -8157,7 +8189,8 @@ function celDamage(plan) {
 // and lights every pixel: sun and sky, a highlight, and the sky and ground reflected in the paint and glass (more at
 // grazing angles). The wheels are one lathed tire and cover, drawn four times, spun and steered in the shader.
 const CELG = {ok: null, prog: null, loc: null, body: null, nBody: 0, wheel: null, nWheel: 0, dmg: new Map(), list: []};
-const CEL_LENS0 = 28;   // material numbers 28-31: the four pop-up lenses (each can be smashed on its own)
+const CEL_LENS0 = 28;
+const CEL_POP_DOWN = 1.4;   // how far a retracted pop-up is turned nose down about its hinge (radians, about 80 degrees)   // material numbers 28-31: the four pop-up lenses (each can be smashed on its own)
 function celgInit() {
   if (CELG.ok !== null) return CELG.ok;
   const gl = GLT.gl;
@@ -8169,12 +8202,17 @@ function celgInit() {
       attribute vec3 aP; attribute vec3 aN; attribute float aM;
       uniform vec3 uCam; uniform vec2 uCS; uniform float uF; uniform vec2 uCtr; uniform vec2 uSize;
       uniform vec3 uO; uniform vec3 uFx; uniform vec3 uRx; uniform vec3 uUx; uniform float uPt;
-      uniform float uWheel; uniform vec4 uW; uniform float uSide; uniform float uTr; uniform float uWdz;
+      uniform float uWheel; uniform vec4 uW; uniform float uSide; uniform float uTr; uniform float uWdz; uniform vec3 uPod;
       uniform vec4 uMc[32]; uniform vec4 uMp[32];
       varying vec3 vN; varying vec3 vP; varying vec4 vMc; varying vec4 vMp;
       void main() {
         vec3 p = aP, n = aN; float pt = uPt;
-        if (uWheel > 0.5) {
+        if (uWheel > 1.5) {
+          // a pop-up: turned about its hinge (u, z = uPod.xy) by uPod.z radians, nose down when retracted
+          float ca = cos(uPod.z), sa = sin(uPod.z); vec2 d = vec2(p.x - uPod.x, p.z - uPod.y);
+          p = vec3(uPod.x + d.x * ca - d.y * sa, p.y, uPod.y + d.x * sa + d.y * ca);
+          n = vec3(n.x * ca - n.z * sa, n.y, n.x * sa + n.z * ca);
+        } else if (uWheel > 0.5) {
           // a unit tire: (cos a x radius, outward, sin a x radius); spun, mirrored to its side, steered, set on its axle
           float cs = cos(uW.z), sn = sin(uW.z), c2 = cos(uW.w), s2 = sin(uW.w);
           vec3 q = vec3((p.x * cs - p.z * sn) * uTr, p.y * uSide, (p.x * sn + p.z * cs) * uTr);
@@ -8185,7 +8223,7 @@ function celgInit() {
         }
         float U = p.x - p.z * pt, Z = p.z + p.x * pt;
         vec3 w = uO + uFx * U + uRx * p.y + uUx * Z;
-        w.z += uWheel * uWdz;
+        if (uWheel > 0.5 && uWheel < 1.5) w.z += uWdz;
         vN = uFx * n.x + uRx * n.y + uUx * n.z; vP = w;
         int mi = int(aM + 0.5); vMc = uMc[mi]; vMp = uMp[mi];
         float dx = w.x - uCam.x, dy = w.y - uCam.y;
@@ -8219,10 +8257,11 @@ function celgInit() {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
     const U = k => gl.getUniformLocation(prog, k);
     CELG.loc = {};
-    for (const k of ['uCam', 'uCS', 'uF', 'uCtr', 'uSize', 'uO', 'uFx', 'uRx', 'uUx', 'uPt', 'uWheel', 'uW', 'uSide', 'uTr', 'uWdz', 'uMc', 'uMp', 'uSun', 'uNight', 'uAlpha']) CELG.loc[k] = U(k);
+    for (const k of ['uCam', 'uCS', 'uF', 'uCtr', 'uSize', 'uO', 'uFx', 'uRx', 'uUx', 'uPt', 'uWheel', 'uW', 'uSide', 'uTr', 'uWdz', 'uPod', 'uMc', 'uMp', 'uSun', 'uNight', 'uAlpha']) CELG.loc[k] = U(k);
     CELG.prog = prog;
     // The body: every quad of every grid as two triangles, 7 numbers a vertex (position, normal, material)
-    const mesh = celMesh(), out = [];
+    const mesh = celMesh();
+    let out = [];
     const quadsOf = (g, matOf) => {
       const qc = g.wrap ? g.cols : g.cols - 1, P = g.P, N = g.N;
       const v = k => { out.push(P[k * 3], P[k * 3 + 1], P[k * 3 + 2], N[k * 3], N[k * 3 + 1], N[k * 3 + 2]); };
@@ -8232,9 +8271,14 @@ function celgInit() {
       }
     };
     for (const g of mesh.grids) quadsOf(g, q => g.M[q]);
-    mesh.lenses.forEach((L, k) => { for (const g of L.boxes) quadsOf(g, q => g.M[q] === CEL_MATS.lens ? CEL_LENS0 + k : g.M[q]); });
     const send = arr => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW); return b; };
     CELG.body = send(out); CELG.nBody = out.length / 7;
+    // The pop-ups (pods and lenses, built raised; the shader swings them on their hinge) and the pockets they rise from
+    out = []; for (const g of mesh.pods) quadsOf(g, q => g.M[q]);
+    mesh.lenses.forEach((L, k) => { for (const g of L.boxes) quadsOf(g, q => g.M[q] === CEL_MATS.lens ? CEL_LENS0 + k : g.M[q]); });
+    CELG.pod = send(out); CELG.nPod = out.length / 7;
+    out = []; for (const g of mesh.pocket) quadsOf(g, q => g.M[q]);
+    CELG.pocket = send(out); CELG.nPocket = out.length / 7;
     // The wheel: the tire's profile and the cover turned round the axle, six dark slots in the cover
     const w = [], NS = 24, pr = mesh.prof, PN = mesh.profN;
     const wv = (a, p) => { const an = a / NS * Math.PI * 2, c = Math.cos(an), s = Math.sin(an); w.push(c * pr[p][0], pr[p][1], s * pr[p][0], c * PN[p][0], PN[p][1], s * PN[p][0]); };
@@ -8291,7 +8335,7 @@ function drawCelicaSmooth() {
   }
   const night = NIGHT_K !== null ? [0.34 + NIGHT_K * 0.142, 0.34 + NIGHT_K * 0.13, 0.39 + NIGHT_K * 0.118] : [1, 1, 1];
   CELG.list.push({d: Math.hypot(GLC.cx - CAMX, GLC.cy - CAMY), o: [R.ox, R.oy, R.oz + LIFT], f: [R.fx, R.fy, R.fz], r: [R.rx, R.ry, R.rz], u: [R.ux, R.uy, R.uz],
-    pt: BODY_PITCH, tr, mc, mp, wheels, night, alpha: ctx.globalAlpha, dmg});
+    pt: BODY_PITCH, tr, mc, mp, wheels, night, alpha: ctx.globalAlpha, dmg, pop: celPop()});
 }
 // Draw the recorded Celicas whose distance falls in this slice (from glsRender's slice, between its own draws)
 function celgDraw(near, far, cam) {
@@ -8309,6 +8353,11 @@ function celgDraw(near, far, cam) {
     gl.uniform1f(L.uWheel, 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, CELG.body); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nBody);
     if (c.dmg) { gl.bindBuffer(gl.ARRAY_BUFFER, c.dmg.buf); attr(); gl.drawArrays(gl.TRIANGLES, 0, c.dmg.n); }
+    if (c.pop > 0.001) {   // the pop-ups on their way up (or up): the dark pockets, then the pods swung about their hinges
+      gl.bindBuffer(gl.ARRAY_BUFFER, CELG.pocket); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nPocket);
+      gl.uniform1f(L.uWheel, 2); gl.uniform3f(L.uPod, 1.76, 0.6, -CEL_POP_DOWN * (1 - c.pop));
+      gl.bindBuffer(gl.ARRAY_BUFFER, CELG.pod); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nPod);
+    }
     gl.uniform1f(L.uWheel, 1);
     gl.bindBuffer(gl.ARRAY_BUFFER, CELG.wheel); attr();
     for (const w of c.wheels) { gl.uniform4f(L.uW, w[0], w[1], w[2], w[3]); gl.uniform1f(L.uSide, w[4]); gl.uniform1f(L.uWdz, w[5]); gl.drawArrays(gl.TRIANGLES, 0, CELG.nWheel); }
@@ -10312,7 +10361,7 @@ const ACTIONS = [['throttle', 'Throttle', 'KeyW'], ['brake', 'Brake / rein back'
   ['clutch', 'Clutch', 'ShiftLeft'], ['crank', 'Start / stop the engine', 'KeyI'], ['ebrake', 'E-brake / handbrake', 'Space'],
   ...[1, 2, 3, 4, 5, 6, 7, 8].map(n => ['g' + n, 'Gear ' + n, 'Digit' + n]), ['rev', 'Reverse', 'KeyR'], ['neutral', 'Neutral', 'KeyN'],
   ['x', 'Nitrous / thrusters / assist motor', 'KeyX'], ['h', 'Special ability', 'KeyH'], ['holdThr', 'Hold the throttle', 'KeyK'], ['holdClu', 'Hold the clutch', 'KeyJ'],
-  ['view', 'Cockpit / chase camera', 'KeyV'], ['units', 'mph / km/h', 'KeyM'], ['fs', 'Full screen', 'KeyF']];
+  ['lights', 'Headlights (pop-ups)', 'KeyL'], ['view', 'Cockpit / chase camera', 'KeyV'], ['units', 'mph / km/h', 'KeyM'], ['fs', 'Full screen', 'KeyF']];
 const FIXED_KEYS = ['Escape', 'Backquote', 'Backspace', 'Enter', 'Tab', 'MetaLeft', 'MetaRight'];
 let KEYMAP = null, SET_CAPTURE = null;
 const bindOf = id => (SETTINGS.binds || {})[id] || ACTIONS.find(a => a[0] === id)[2];
@@ -10545,6 +10594,7 @@ addEventListener('keydown', e => {
       break;
     // H: the Tesla's hop; on Greta it switches her regen mode (the rear motor braking hard to charge) on or off
     case 'KeyH': if (e.repeat) break; if (CFG.lowRange) lowRangeKey(); else if (CFG.rearAssist) { S.regenMode = !S.regenMode; log(S.regenMode ? 'Regen mode: the rear motor slows the car and charges the battery. Any throttle ends it.' : 'Regen mode off.', 'ok'); } else hop(); break;
+    case 'KeyL': if (!e.repeat) popupKey(); break;   // the Celica's pop-up headlamps
     case 'KeyV': if (S.tip) { S.tipCam = !S.tipCam; break; } VIEW = VIEW === 'cockpit' ? 'chase' : 'cockpit'; camS = null; break;
     case 'KeyM': toggleUnits(); break;
     case 'Backspace': if (LESSON !== null) showLessons(); else if ((RACE !== null || EVT !== null) && S.started && !S.finished) askQuitRace('races'); else if (CAREER_CAR) showCareer(RACE !== null || EVT !== null ? 'races' : 'garage'); else showGarage(); break;
