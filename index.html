@@ -8106,17 +8106,20 @@ function celMesh() {
 
     out.push(endP(s * 0.5, s * 0.9, 0.45, 0.53, M.amber, true));                               // parking and turn lamps round the corners
     out.push(endP(s * 0.42, s * 0.98, 0.66, 0.84, M.red, false), endP(s * 0.3, s * 0.42, 0.66, 0.84, M.clear, false));   // tail and reversing lamps, wrapping round
-    out.push(topP(1.05, 2.04, s * 0.762, s * 0.77, M.seam), topP(-2.08, -1.53, s * 0.745, s * 0.752, M.seam));   // hood and trunk shut lines
+    out.push(topP(1.05, 1.74, s * 0.762, s * 0.77, M.seam), topP(-2.08, -1.53, s * 0.745, s * 0.752, M.seam));   // hood (up to the lamp covers) and trunk shut lines
   }
   out.push(endP(-0.46, 0.46, 0.3, 0.38, M.trim, true), endP(-0.3, 0.3, 0.47, 0.51, M.trim, true), endP(-0.8, 0.8, 0.557, 0.563, M.seam, true));   // intake, slot, bumper line
   out.push(endP(-0.3, 0.3, 0.68, 0.82, M.dred, false), endP(-0.16, 0.16, 0.3, 0.43, M.plate, false), endP(-0.8, 0.8, 0.505, 0.512, M.seam, false));   // tail panel, plate, bumper line
   out.push(topP(0.955, 1.05, -0.74, 0.74, M.trim), topP(-1.53, -1.522, -0.74, 0.74, M.seam));     // the cowl, the trunk's front edge
   // Boxes: the raised pop-ups (painted covers on black housings), mirrors, wheel-well liners, the tailpipe
   for (const s of [-1, 1]) {
-    // a pop-up headlamp, down: its cover lies flush in the hood, outlined by its shut line
-    const pv = [0.42, 0.79].map(x => x * s);
-    out.push(topP(1.74, 1.952, pv[0] - 0.004 * s, pv[0] + 0.004 * s, M.seam), topP(1.74, 1.952, pv[1] - 0.004 * s, pv[1] + 0.004 * s, M.seam),
-      topP(1.74, 1.748, Math.min(...pv), Math.max(...pv), M.seam), topP(1.944, 1.952, Math.min(...pv), Math.max(...pv), M.seam));
+    // a pop-up headlamp, down: its cover lies flush in the hood corner, outlined by its shut line from behind the lamp
+    // all the way to the hood's front lip; the outer line follows the fender as the nose rounds in
+    const uB = 1.74, uL = 2.11, vEdge = u => C.half(u, 3.5)[0] - 0.012, vIn = 0.42;
+    const line = (fu, fv, nu) => celPatch((a, b) => C.top(fu(a), s * fv(a, b)), nu, 1, 0.0025, M.seam);
+    out.push(line(a => uB + (uL - uB) * a, (a, b) => vIn - 0.004 + 0.008 * b, 10),                                            // inner edge
+      line(a => uB + (uL - uB) * a, (a, b) => vEdge(uB + (uL - uB) * a) - 0.004 + 0.008 * b, 10),                              // outer edge
+      line(a => uB + 0.008 * a, (a, b) => vIn + (vEdge(uB) - vIn) * b, 1), line(a => uL - 0.008 + 0.008 * a, (a, b) => vIn + (vEdge(uL) - vIn) * b, 1));   // back edge, the lip
     out.push(celRound(0.62, 0.74, ...(s > 0 ? [0.77, 0.91] : [-0.91, -0.77]), 0.9, 0.97, M.trim, M.trim, 0.03));           // a mirror
     for (const a of C.axles) out.push(...celBox(a - 0.36, a + 0.36, ...(s > 0 ? [0.595, 0.615] : [-0.615, -0.595]), 0.24, 0.69, {top: M.liner, side: M.liner, front: M.liner, back: M.liner}));
   }
