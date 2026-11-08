@@ -5028,9 +5028,10 @@ function setCam(dt = 0) {
     const cs = camS, ch = Math.cos(S.h), sh = Math.sin(S.h), mv = S.v >= -0.5 ? 1 : -1;
     const ahead = ((cs.x - S.x) * ch + (cs.y - S.y) * sh) * mv, far = Math.hypot(cs.x - S.x, cs.y - S.y);
     cs.t += dt;
-    if (cs.fresh || (ahead < -14 && cs.t > 1) || far > 150 || (Math.abs(S.v) < 2 && cs.t > 8)) {
+    if (cs.fresh || (ahead < (cs.close ? -8 : -14) && cs.t > 1) || far > 150 || (Math.abs(S.v) < 2 && cs.t > 8)) {
       cs.fresh = false; cs.t = 0;
-      const sp = Math.max(Math.abs(S.v), 3), D = clamp(sp * (2.4 + Math.random() * 1.4), 28, 110);
+      cs.close = Math.random() < 0.4;   // an aggressive shot: low, wide and right at the curb, so the car whips past
+      const sp = Math.max(Math.abs(S.v), 3), D = cs.close ? clamp(sp * (1.2 + Math.random() * 0.9), 16, 60) : clamp(sp * (2.4 + Math.random() * 1.4), 28, 110);
       // Where the car will be in a few seconds: follow its heading and yaw rate along an arc (not past a turn and a half)
       let px = S.x, py = S.y, hh = S.h + (mv < 0 ? Math.PI : 0);
       const turn = clamp((S.r || 0) * (mv < 0 ? -1 : 1), -0.6, 0.6) / sp, n = 14;
@@ -5039,18 +5040,18 @@ function setCam(dt = 0) {
       let cx = px, cy = py;
       let found = false;
       for (let i = 0; i < 20 && !found; i++) {   // beside its path, beyond the road's edge, a little nearer or farther along; in a town the sidewalk's curb is tried last, since the buildings begin just past it
-        const curb = i >= 12, lat = curb ? CFG.RW + 1.6 + Math.random() * 1.2 : 7 + (i >> 1) * 3 + Math.random() * 4, side = (i & 1 ? -1 : 1) * sd0, al = (Math.random() - 0.5) * (curb ? 30 : 16);
+        const curb = cs.close ? i < 12 : i >= 12, lat = curb ? CFG.RW + (cs.close ? 0.9 + Math.random() * 1.6 : 1.6 + Math.random() * 1.2) : 7 + (i >> 1) * 3 + Math.random() * 4, side = (i & 1 ? -1 : 1) * sd0, al = (Math.random() - 0.5) * (curb ? (cs.close ? 12 : 30) : 16);
         cx = px - Math.sin(hh) * side * lat + Math.cos(hh) * al; cy = py + Math.cos(hh) * side * lat + Math.sin(hh) * al;
         found = camSpotFree(cx, cy);
       }
-      cs.x = cx; cs.y = cy; cs.tz = 1.2 + Math.random() * 1.4; cs.z = elev(cx, cy) + cs.tz; cs.yaw = Math.atan2(S.y - cy, S.x - cx); cs.snap = true;
+      cs.x = cx; cs.y = cy; cs.tz = cs.close ? 0.35 + Math.random() * 0.7 : 1.2 + Math.random() * 1.4; cs.z = elev(cx, cy) + cs.tz; cs.yaw = Math.atan2(S.y - cy, S.x - cx); cs.snap = true;
     }
-    const tgx = S.x, tgy = S.y, want = Math.atan2(tgy - cs.y, tgx - cs.x), ky = cs.snap || dt <= 0 ? 1 : 1 - Math.exp(-dt / 0.07);
+    const tgx = S.x, tgy = S.y, want = Math.atan2(tgy - cs.y, tgx - cs.x), ky = cs.snap || dt <= 0 ? 1 : 1 - Math.exp(-dt / (cs.close ? 0.04 : 0.07));
     cs.snap = false; cs.yaw += wrapA(want - cs.yaw) * ky;
     const dist0 = Math.max(Math.hypot(tgx - cs.x, tgy - cs.y), 4);
     cs.z = elev(cs.x, cs.y) + cs.tz;
     CAMX = cs.x; CAMY = cs.y; CAMYAW = cs.yaw; CAMZ = cs.z;
-    F = VH * 0.9 * clamp(dist0 / 24, 1, 2.6);   // a longer lens for a car far away
+    F = VH * 0.9 * (cs.close ? clamp(dist0 / 24, 0.8, 1.2) : clamp(dist0 / 24, 1, 2.6));   // a longer lens for a car far away
     HOR = VH * 0.46 + Math.atan(((S.sb ? S.sb.oz : elev(S.x, S.y)) + 0.7 - cs.z) / dist0) * F;
   } else if (VIEW === 'chase') {
     if (!camS) camS = {x: S.x, y: S.y, yaw: S.h};
