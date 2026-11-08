@@ -2883,11 +2883,25 @@ Object.assign(SOUND, {
   roadster26: {pk1: [150, 1], pk2: [400, 1], lp: [300, 0, 0], saw: 0, sq: 0, nbp: [400, 0], noise: [0, 0], lope: 0, tick: 0, gain: 0, rasp: 0},
   insight00: {pk1: [150, 5], pk2: [430, 7], lp: [300, 0.32, 500], saw: 0.5, sq: 0.36, nbp: [470, 0.3], noise: [0.04, 0.22], lope: 0.1, tick: 0.03, gain: 0.85, rasp: 0.7}
 });
+// Doppler shift for the trackside camera: the engine's pitch rises as the car comes toward the camera and drops as it goes
+// away, by the car's speed along the line between them (an exaggerated 230 m/s stands in for the speed of sound, so it is
+// plain to hear at road speeds), and it gets louder as it nears. Other views hear it unshifted. Returns [pitch, loudness].
+function dopplerOf() {
+  const on = VIEW === 'cinema' && !SHOWCASE && camS && camS.cin;
+  if (!on) { if (AU) AU.dop = 1; return [1, 1]; }
+  const dx = S.x - CAMX, dy = S.y - CAMY, d = Math.max(Math.hypot(dx, dy), 1), c = Math.cos(S.h), sn = Math.sin(S.h);
+  const wx = S.v * c - (S.vy || 0) * sn, wy = S.v * sn + (S.vy || 0) * c;
+  const away = (wx * dx + wy * dy) / d;   // + moving away from the camera
+  const tgt = clamp(230 / (230 + away), 0.7, 1.4);
+  if (AU) AU.dop = (AU.dop || 1) + (tgt - (AU.dop || 1)) * 0.4;
+  return [AU ? AU.dop : tgt, clamp(14 / d, 0.3, 1.3)];
+}
 function updateAudio() {
   if (!AU) return;
+  const [DOP, DOPV] = dopplerOf();
   const P = SOUND[CFG.engineKey] || SOUND[CFG.body] || SOUND.pickup;
   const t = AU.c.currentTime, rpm = Math.max(0, S.rpm), load = S.thr;
-  const fire = Math.max(10, rpm / 60 * (CFG.cyl || 4) / 2);   // firing pulses: half the cylinders each turn
+  const fire = Math.max(10, rpm / 60 * (CFG.cyl || 4) / 2) * DOP;   // firing pulses: half the cylinders each turn
   // Lugging: low revs with the clutch engaged in gear. The engine labors, sputters and gets rougher
   // the lower the revs fall, until the stall check cuts it.
   const eng = S.engineOn ? clamp((0.85 - S.clutch) / 0.3, 0, 1) : 0;
@@ -2909,7 +2923,7 @@ function updateAudio() {
   const FP = AU.firing.p, key = CFG.engineKey || CFG.body, cross = (CFG.cyl || 4) === 8 && key !== 'lt7';
   if (FP.key !== key) { FP.key = key; FP.pattern = firingPattern(key, CFG.cyl || 4, cross); if (P.rumble) FP.pattern = FP.pattern.map((x, i) => x * P.rumble[i % P.rumble.length]); }   // a boxer's throb
   const idleish = clamp((2200 - rpm) / 1400, 0, 1);
-  Object.assign(FP, {on: S.engineOn && !CFG.electric, rpm: rpm * rough, cyl: CFG.cyl || 4, load: S.cut ? 0 : load,
+  Object.assign(FP, {on: S.engineOn && !CFG.electric, rpm: rpm * rough * DOP, cyl: CFG.cyl || 4, load: S.cut ? 0 : load,
     jit: 0.03 + idleish * (0.04 + 0.5 * P.lope) + worn * 0.25 + lug * 0.2, miss: worn * worn * 0.12 + lug * 0.04,
     sharp: CFG.diesel ? 0.55 : 1, crack: CFG.diesel ? 0.9 : 0.35, fire: P.fire || null,
     lvl: Math.hypot(0.577 * P.saw, P.sq) / 0.45});   // as loud as the voice's old oscillators were (measured offline)
@@ -2918,7 +2932,7 @@ function updateAudio() {
   // VTEC: on the high cam the intake opens up into a hard, metallic howl: louder, much brighter, and the
   // resonances jump up in pitch. It follows S.camK, so the change over is sudden but not a click.
   const vt = S.camK || 0;
-  const level = S.engineOn ? (0.05 + 0.16 * load + 0.03 * (rpm / 5000)) * (S.cut ? 0.35 : 1) * stutter * P.gain * (1 + 0.25 * ex) * (1 + 0.3 * vt) * (t < (AU.missT || 0) ? 0.6 : 1) : 0;
+  const level = S.engineOn ? (0.05 + 0.16 * load + 0.03 * (rpm / 5000)) * (S.cut ? 0.35 : 1) * stutter * P.gain * (1 + 0.25 * ex) * (1 + 0.3 * vt) * (t < (AU.missT || 0) ? 0.6 : 1) * DOPV : 0;
   AU.eng.gain.setTargetAtTime(level, t, 0.03);
   // The 4A-FE opens up high in the revs: the filter climbs faster above 4,000 rpm, giving it its rasp
   const rasp = P.rasp * clamp((rpm - 4000) / 2000, 0, 1) * 900;
@@ -2928,16 +2942,16 @@ function updateAudio() {
   // Turbo whistle and spool hiss, both following the boost
   const bst = CFG.turbo ? (S.boost || 0) : 0;
   const tw = P.tw || [2400, 5200];
-  AU.tw.frequency.setTargetAtTime(tw[0] + tw[1] * bst, t, 0.05);
+  AU.tw.frequency.setTargetAtTime((tw[0] + tw[1] * bst) * DOP, t, 0.05);
   AU.twG.gain.setTargetAtTime(0.025 * (P.whistle || 1) * bst * (0.4 + 0.6 * load), t, 0.05);
   AU.tickHP.frequency.setTargetAtTime(P.tickHz || 3200, t, 0.1);
   AU.twNG.gain.setTargetAtTime(0.07 * bst, t, 0.05);
   // Twin turbos: a second whistle a little higher, so the two beat against each other
-  AU.tw2.frequency.setTargetAtTime((tw[0] + tw[1] * bst) * 1.08, t, 0.05);
+  AU.tw2.frequency.setTargetAtTime((tw[0] + tw[1] * bst) * 1.08 * DOP, t, 0.05);
   AU.tw2G.gain.setTargetAtTime(CFG.twin ? 0.02 * (P.whistle || 1) * bst * (0.4 + 0.6 * load) : 0, t, 0.05);
   // Supercharger whine: pitch follows the revs (about 1.9 kHz at 3,000 rpm), loudness follows how hard the
   // blower is working, so it is faint off the throttle and screams under boost
-  const scOn = CFG.sc && S.engineOn, scF = Math.max(200, rpm / 60 * 38), scLoad = scOn ? (S.sc || 0) : 0;
+  const scOn = CFG.sc && S.engineOn, scF = Math.max(200, rpm / 60 * 38) * DOP, scLoad = scOn ? (S.sc || 0) : 0;
   AU.scO.frequency.setTargetAtTime(scF, t, 0.03);
   AU.scO2.frequency.setTargetAtTime(scF * 2, t, 0.03);
   AU.scBP.frequency.setTargetAtTime(scF * 1.6, t, 0.03);
@@ -8253,11 +8267,15 @@ function celgInit() {
       uniform vec3 uCam; uniform vec2 uCS; uniform float uF; uniform vec2 uCtr; uniform vec2 uSize;
       uniform vec3 uO; uniform vec3 uFx; uniform vec3 uRx; uniform vec3 uUx; uniform float uPt;
       uniform float uWheel; uniform vec4 uW; uniform float uSide; uniform float uTr; uniform float uWdz; uniform vec3 uPod;
+      uniform vec2 uNF; uniform mat3 uRot; uniform vec3 uPiv;
       uniform vec4 uMc[32]; uniform vec4 uMp[32];
       varying vec3 vN; varying vec3 vP; varying vec4 vMc; varying vec4 vMp;
       void main() {
         vec3 p = aP, n = aN; float pt = uPt;
-        if (uWheel > 1.5) {
+        if (uWheel > 2.5) {
+          // turned about a pivot (the cockpit's steering wheel and shift lever)
+          p = uPiv + uRot * (p - uPiv); n = uRot * n;
+        } else if (uWheel > 1.5) {
           // a pop-up: turned about its hinge (u, z = uPod.xy) by uPod.z radians, nose down when retracted
           float ca = cos(uPod.z), sa = sin(uPod.z); vec2 d = vec2(p.x - uPod.x, p.z - uPod.y);
           p = vec3(uPod.x + d.x * ca - d.y * sa, p.y, uPod.y + d.x * sa + d.y * ca);
@@ -8278,7 +8296,7 @@ function celgInit() {
         int mi = int(aM + 0.5); vMc = uMc[mi]; vMp = uMp[mi];
         float dx = w.x - uCam.x, dy = w.y - uCam.y;
         float f = dx * uCS.x + dy * uCS.y, r = dy * uCS.x - dx * uCS.y, u = w.z - uCam.z;
-        float near = 0.5, far = 2000.0;   // (the same camera and depth as the ground and the scenery)
+        float near = uNF.x, far = uNF.y;   // (0.5 and 2000 m: the same camera and depth as the ground and the scenery; the cockpit's own near plane is 3 cm)
         gl_Position = vec4((2.0 * uCtr.x / uSize.x - 1.0) * f + 2.0 * uF * r / uSize.x,
                            (1.0 - 2.0 * uCtr.y / uSize.y) * f + 2.0 * uF * u / uSize.y,
                            (f * (far + near) - 2.0 * far * near) / (far - near), f);
@@ -8286,8 +8304,9 @@ function celgInit() {
     gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `
       precision ${hp} float;
       varying vec3 vN; varying vec3 vP; varying vec4 vMc; varying vec4 vMp;
-      uniform vec3 uCam; uniform vec3 uSun; uniform vec3 uNight; uniform float uAlpha;
+      uniform vec3 uCam; uniform vec3 uSun; uniform vec3 uNight; uniform float uAlpha; uniform vec3 uClip; uniform float uSunK; uniform vec2 uAmb;
       void main() {
+        if (uClip.x > 0.5 && vP.x < uClip.y && abs(vP.y) < uClip.z) discard;   // (the cockpit: the body is cut away inside the cabin)
         vec3 N = normalize(vN), V = normalize(uCam - vP);
         float nv = dot(N, V);
         if (nv < 0.0) { N = -N; nv = -nv; }
@@ -8296,7 +8315,7 @@ function celgInit() {
         float g = 1.0 - nv; g = g * g * g;
         vec3 R = reflect(-V, N);
         vec3 env = R.z > 0.0 ? mix(vec3(0.816, 0.847, 0.878), vec3(0.463, 0.62, 0.831), clamp(R.z * 1.6, 0.0, 1.0)) : vec3(0.275, 0.282, 0.251);
-        float shd = vMc.w + (1.0 - vMc.w) * (0.46 + 0.16 * N.z + 0.52 * dif);
+        float shd = vMc.w + (1.0 - vMc.w) * (uAmb.x + uAmb.y * N.z + 0.52 * dif * uSunK);   // (ambient: outside 0.46 + 0.16 up; in the cab, light from all the windows, more even)
         float rf = min(0.95, vMp.x + vMp.y * g);
         vec3 c = vMc.rgb * shd * (1.0 - rf) + env * rf + vMp.z * sp;
         if (vMc.w < 0.7) c *= uNight;
@@ -8307,17 +8326,17 @@ function celgInit() {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
     const U = k => gl.getUniformLocation(prog, k);
     CELG.loc = {};
-    for (const k of ['uCam', 'uCS', 'uF', 'uCtr', 'uSize', 'uO', 'uFx', 'uRx', 'uUx', 'uPt', 'uWheel', 'uW', 'uSide', 'uTr', 'uWdz', 'uPod', 'uMc', 'uMp', 'uSun', 'uNight', 'uAlpha']) CELG.loc[k] = U(k);
+    for (const k of ['uCam', 'uCS', 'uF', 'uCtr', 'uSize', 'uO', 'uFx', 'uRx', 'uUx', 'uPt', 'uWheel', 'uW', 'uSide', 'uTr', 'uWdz', 'uPod', 'uNF', 'uRot', 'uPiv', 'uClip', 'uSunK', 'uAmb', 'uMc', 'uMp', 'uSun', 'uNight', 'uAlpha']) CELG.loc[k] = U(k);
     CELG.prog = prog;
     // The body: every quad of every grid as two triangles, 7 numbers a vertex (position, normal, material)
     const mesh = celMesh();
     let out = [];
-    const quadsOf = (g, matOf) => {
+    const quadsOf = (g, matOf, arr = out) => {
       const qc = g.wrap ? g.cols : g.cols - 1, P = g.P, N = g.N;
-      const v = k => { out.push(P[k * 3], P[k * 3 + 1], P[k * 3 + 2], N[k * 3], N[k * 3 + 1], N[k * 3 + 2]); };
+      const v = k => { arr.push(P[k * 3], P[k * 3 + 1], P[k * 3 + 2], N[k * 3], N[k * 3 + 1], N[k * 3 + 2]); };
       for (let i = 0; i < g.rows - 1; i++) for (let j = 0; j < qc; j++) {
         const j2 = (j + 1) % g.cols, A = i * g.cols + j, B = (i + 1) * g.cols + j, C = (i + 1) * g.cols + j2, D = i * g.cols + j2, m = matOf(i * qc + j);
-        for (const k of [A, B, C, A, C, D]) { v(k); out.push(m); }
+        for (const k of [A, B, C, A, C, D]) { v(k); arr.push(m); }
       }
     };
     for (const g of mesh.grids) quadsOf(g, q => g.M[q]);
@@ -8337,6 +8356,7 @@ function celgInit() {
       for (const [aa, pp] of [[a, p], [a + 1, p], [a + 1, p + 1], [a, p], [a + 1, p + 1], [a, p + 1]]) { wv(aa, pp); w.push(m); }
     }
     CELG.wheel = send(w); CELG.nWheel = w.length / 7;
+    celgCabBuffers(gl, quadsOf, send);   // the cockpit's
     CELG.ok = true;
   } catch (e) { console.warn('Smooth Celica unavailable:', e.message); CELG.ok = false; }
   return CELG.ok;
@@ -8395,6 +8415,7 @@ function celgDraw(near, far, cam) {
   gl.useProgram(CELG.prog);
   gl.uniform3f(L.uCam, CAMX, CAMY, CAMZ); gl.uniform2f(L.uCS, cam.c, cam.s); gl.uniform1f(L.uF, F); gl.uniform2f(L.uCtr, cam.cx, cam.cy); gl.uniform2f(L.uSize, cam.w, cam.h);
   gl.uniform3f(L.uSun, Math.cos(SUN_AZ) * 0.68, Math.sin(SUN_AZ) * 0.68, 0.73);
+  gl.uniform2f(L.uNF, 0.5, 2000); gl.uniform3f(L.uClip, 0, 0, 0); gl.uniform1f(L.uSunK, 1); gl.uniform2f(L.uAmb, 0.46, 0.16);
   const attr = () => { gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 28, 12); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 24); };
   gl.enableVertexAttribArray(0); gl.enableVertexAttribArray(1); gl.enableVertexAttribArray(2);
   for (const c of list) {
@@ -8414,6 +8435,303 @@ function celgDraw(near, far, cam) {
   }
   gl.useProgram(GLS.prog);   // (back to the scenery's program; its draws set their own attribute pointers)
 }
+
+/* ---------- the smooth Celica's cockpit (WebGL) ---------- */
+// On WebGL (and the 3D cockpit settings) the Celica's cockpit is a smooth, lit interior instead of flat polygons: the
+// T180's gray dashboard swept across the car and wrapping into the doors, the hooded instrument binnacle, the center
+// stack angled toward the driver (two vents, the cassette radio with its green display, the three climate sliders and
+// their buttons), the defroster slot along the glass, door cards with armrests, window cranks and speaker grilles, the
+// A-pillars, header and headliner, folded sun visors, the rear-view mirror, the tunnel console with the shifter boot
+// and the handbrake, a three-spoke wheel with a padded center and the shift lever. All of it is built once in the car's
+// frame (celCabMesh) and drawn by the smooth Celica's shader from the driver's eye (its cab mode: the car's frame is the
+// world, the eye the camera, a near plane of 3 cm), lit by the sun through the glass. The wheel turns about its column
+// and the lever follows the gear (the shader's turn mode, uRot about uPiv). The smooth body is drawn first, cut away
+// inside the cabin (uClip), so the cowl and the pop-ups show beyond the dash. The working instruments stay the crisp 2D
+// widgets: the dials and gear letter in the binnacle, the pedal readout, the gear gate plate, the boost gauge.
+// The eye sits where a driver's would in the real car (further back and lower than the box cab's), only in this cockpit.
+const CEL_CAB = {eye: {u: -0.36, v: -0.37, z: 1.11}, hor: 0.38};
+const CAB_M = {dash: 0, dashTop: 1, deep: 2, black: 3, slat: 4, radio: 5, display: 6, red: 7, white: 8, ledG: 9, ledA: 10, door: 11, cloth: 12,
+  headliner: 13, leather: 14, silver: 15, visor: 16, carpet: 17, mirror: 18, recess: 19, seam: 20};
+const CAB_MATS = [
+  {c: [64, 66, 71], em: 0, rb: 0.02, rg: 0.14, ks: 0.07, sh: 10}, {c: [72, 74, 79], em: 0, rb: 0.02, rg: 0.16, ks: 0.08, sh: 10},
+  {c: [46, 47, 51], em: 0, rb: 0.02, rg: 0.12, ks: 0.06, sh: 10}, {c: [20, 21, 24], em: 0, rb: 0.02, rg: 0.12, ks: 0.1, sh: 16},
+  {c: [62, 64, 70], em: 0, rb: 0.02, rg: 0.1, ks: 0.12, sh: 20}, {c: [13, 14, 16], em: 0, rb: 0.05, rg: 0.2, ks: 0.3, sh: 40},
+  {c: [127, 208, 138], em: 0.95, rb: 0.05, rg: 0.2, ks: 0.3, sh: 40}, {c: [196, 74, 42], em: 0.2, rb: 0.02, rg: 0.1, ks: 0.2, sh: 20},
+  {c: [232, 232, 226], em: 0.2, rb: 0.02, rg: 0.1, ks: 0.2, sh: 20}, {c: [95, 196, 106], em: 0.95, rb: 0, rg: 0, ks: 0, sh: 8},
+  {c: [217, 164, 42], em: 0.95, rb: 0, rg: 0, ks: 0, sh: 8}, {c: [70, 72, 77], em: 0, rb: 0.02, rg: 0.12, ks: 0.1, sh: 14},
+  {c: [88, 90, 96], em: 0, rb: 0, rg: 0.05, ks: 0.02, sh: 6}, {c: [150, 148, 140], em: 0, rb: 0, rg: 0.04, ks: 0.02, sh: 6},
+  {c: [26, 26, 28], em: 0, rb: 0.03, rg: 0.18, ks: 0.18, sh: 22}, {c: [182, 184, 188], em: 0.05, rb: 0.35, rg: 0.3, ks: 0.7, sh: 50},
+  {c: [124, 122, 116], em: 0, rb: 0, rg: 0.04, ks: 0.02, sh: 6}, {c: [36, 36, 38], em: 0, rb: 0, rg: 0.03, ks: 0.01, sh: 4},
+  {c: [64, 74, 86], em: 0.1, rb: 0.3, rg: 0.3, ks: 0.6, sh: 80}, {c: [8, 9, 10], em: 0, rb: 0.02, rg: 0.1, ks: 0.05, sh: 10},
+  {c: [30, 31, 34], em: 0, rb: 0, rg: 0.05, ks: 0.02, sh: 6}];
+// Small vector helpers for building the cab
+const v3 = {
+  add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], mul: (a, k) => [a[0] * k, a[1] * k, a[2] * k],
+  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  norm: a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+};
+// A smooth curve through points (Catmull-Rom), n steps a segment, ends kept
+function crPath(K, n = 4) {
+  const out = [];
+  for (let i = 0; i < K.length - 1; i++) {
+    const a = K[Math.max(0, i - 1)], b = K[i], c = K[i + 1], d = K[Math.min(K.length - 1, i + 2)];
+    for (let s = 0; s < n; s++) { const t = s / n, t2 = t * t, t3 = t2 * t; out.push(b.map((_, j) => 0.5 * (2 * b[j] + (c[j] - a[j]) * t + (2 * a[j] - 5 * b[j] + 4 * c[j] - d[j]) * t2 + (3 * b[j] - a[j] - 3 * c[j] + d[j]) * t3))); }
+  }
+  out.push(K[K.length - 1].slice());
+  return out;
+}
+// A box from 8 corners (bit 0: a, bit 1: b, bit 2: depth), each face flat-lit, normals away from its middle
+function cabHex(c, mat, pull = 2e-4) {
+  const ctr = c.reduce((s, p) => v3.add(s, v3.mul(p, 1 / 8)), [0, 0, 0]);
+  return [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 4, 5], [2, 3, 6, 7], [0, 2, 4, 6], [1, 3, 5, 7]].map(f => {
+    const P = f.map(i => c[i]), g = celGrid(2, 2, false, (i, j) => P[i * 2 + j], () => mat, pull);
+    let n = v3.norm(v3.cross(v3.sub(P[1], P[0]), v3.sub(P[2], P[0])));
+    if (v3.dot(n, v3.sub(P[0], ctr)) < 0) n = v3.mul(n, -1);
+    for (let k = 0; k < 12; k += 3) g.N.set(n, k);
+    return g;
+  });
+}
+// A box laid on a plane: origin o, along ea (a meters), along eb (b meters), out along n (d meters)
+const planeBox = (o, ea, eb, n, a0, a1, b0, b1, d0, d1, mat) => {
+  const C = []; for (let k = 0; k < 8; k++) C.push(v3.add(o, v3.add(v3.mul(ea, k & 1 ? a1 : a0), v3.add(v3.mul(eb, k & 2 ? b1 : b0), v3.mul(n, k & 4 ? d1 : d0)))));
+  return cabHex(C, mat);
+};
+// A tube along a path with an elliptical section (a across, b deep): w is the direction its depth points (into the cabin)
+function cabTube(path, a, b, w, mat, closed = false) {
+  const NR = 14, rows = path.length, frames = path.map((p, i) => {
+    const T = v3.norm(v3.sub(path[Math.min(rows - 1, i + 1)], path[Math.max(0, i - 1)]));
+    const W = typeof w === 'function' ? w(i) : w, n2 = v3.norm(v3.sub(W, v3.mul(T, v3.dot(W, T)))), n1 = v3.cross(T, n2);
+    return [n1, n2];
+  });
+  const at = (i, j) => { const t = j / NR * Math.PI * 2, [n1, n2] = frames[i]; return v3.add(path[i], v3.add(v3.mul(n1, a * Math.cos(t)), v3.mul(n2, b * Math.sin(t)))); };
+  const g = celGrid(rows, NR, true, at, () => mat, 0);
+  for (let i = 0; i < rows; i++) for (let j = 0; j < NR; j++) { const t = j / NR * Math.PI * 2, [n1, n2] = frames[i]; g.N.set(v3.norm(v3.add(v3.mul(n1, Math.cos(t) / a), v3.mul(n2, Math.sin(t) / b))), (i * NR + j) * 3); }
+  void closed;
+  return g;
+}
+// A loft across the car (v stations) of a profile in (u, z), with flat end caps; mat(profile index) gives each band's material
+function cabLoftV(vs, prof, mat, capMat) {
+  const P = vs.map(prof), cols = P[0].length, out = [];
+  out.push(celGrid(vs.length, cols, false, (i, j) => [P[i][j][0], vs[i], P[i][j][1]], (i, j) => mat(j), 0, (i, j) => {
+    // outward: away from the profile's middle
+    const c = P[i].reduce((s, q) => [s[0] + q[0] / cols, s[1] + q[1] / cols], [0, 0]); return [P[i][j][0] - c[0], 0, P[i][j][1] - c[1]]; }));
+  for (const [i, s] of [[0, -1], [vs.length - 1, 1]]) {   // the end caps: a fan from the profile's middle
+    const c = P[i].reduce((q, p) => [q[0] + p[0] / cols, q[1] + p[1] / cols], [0, 0]);
+    const g = celGrid(2, cols, false, (r, j) => r ? [c[0], vs[i], c[1]] : [P[i][j][0], vs[i], P[i][j][1]], () => capMat, 0);
+    for (let k = 0; k < g.N.length; k += 3) g.N.set([0, s, 0], k);
+    out.push(g);
+  }
+  return out;
+}
+// A lathe: rings of radius r(t) round an axis (from p0 to p1), t 0-1
+function cabLathe(p0, p1, rOf, mat, n = 10) {
+  const ax = v3.norm(v3.sub(p1, p0)), up = Math.abs(ax[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], e1 = v3.norm(v3.cross(ax, up)), e2 = v3.cross(ax, e1), NR = 16;
+  const at = (i, j) => { const t = i / n, r = rOf(t), a = j / NR * Math.PI * 2; return v3.add(v3.add(p0, v3.mul(v3.sub(p1, p0), t)), v3.add(v3.mul(e1, r * Math.cos(a)), v3.mul(e2, r * Math.sin(a)))); };
+  const ctr = v3.mul(v3.add(p0, p1), 0.5);
+  return celGrid(n + 1, NR, true, at, () => mat, 0, (i, j) => { const p = at(i, j), c = v3.add(p0, v3.mul(v3.sub(p1, p0), i / n)); const d = v3.sub(p, c); return v3.dot(d, d) > 1e-10 ? d : v3.sub(p, ctr); });
+}
+// Turn a grid about a pivot by a 3x3 matrix (rows), points and normals
+function cabTurn(g, piv, M) {
+  const ap = (m, x) => [m[0] * x[0] + m[1] * x[1] + m[2] * x[2], m[3] * x[0] + m[4] * x[1] + m[5] * x[2], m[6] * x[0] + m[7] * x[1] + m[8] * x[2]];
+  for (let k = 0; k < g.P.length; k += 3) {
+    const p = ap(M, [g.P[k] - piv[0], g.P[k + 1] - piv[1], g.P[k + 2] - piv[2]]), n = ap(M, [g.N[k], g.N[k + 1], g.N[k + 2]]);
+    g.P.set([p[0] + piv[0], p[1] + piv[1], p[2] + piv[2]], k); g.N.set(n, k);
+  }
+  return g;
+}
+// A rotation of angle t about a unit axis (Rodrigues), as a row-major 3x3
+function axisRot(ax, t) {
+  const [x, y, z] = ax, c = Math.cos(t), s = Math.sin(t), C = 1 - c;
+  return [c + x * x * C, x * y * C - z * s, x * z * C + y * s, y * x * C + z * s, c + y * y * C, y * z * C - x * s, z * x * C - y * s, z * y * C + x * s, c + z * z * C];
+}
+// The wheel's place: hub, its axis toward the driver (n), the rim's plane (right r, up w)
+const CEL_WHEEL = (() => { const al = 0.42; return {C: [0.08, -0.37, 0.73], n: [-Math.cos(al), 0, Math.sin(al)], r: [0, 1, 0], w: [Math.sin(al), 0, Math.cos(al)], R: 0.18}; })();
+const CEL_LEVER = {piv: [0.05, 0.03, 0.47]};
+// The instruments' spot in the binnacle, for the 2D dials (cabDialsStyled reads bu, D and driverV)
+const CEL_GAUGE = {bu: 0.427, D: 0.83, dv: -0.37};
+function celCabMesh() {
+  const M = CAB_M, out = [], wheel = [], lever = [], push = (arr, g) => { if (Array.isArray(g)) arr.push(...g); else arr.push(g); };
+  // The dashboard: a profile from the foot of the windshield, back over the top, round the lip, down the face, the knee
+  // panel and under, swept across the car; toward the doors the face comes forward so the dash wraps into them
+  const lipOf = v => 0.46 + 0.06 * Math.pow(Math.max(0, (Math.abs(v) - 0.58) / 0.25), 2);
+  const dashProf = v => {
+    const L = lipOf(v);
+    return crPath([[0.95, 0.87], [0.8, 0.905], [0.62, 0.926], [L + 0.05, 0.935], [L + 0.012, 0.93], [L - 0.004, 0.912], [L - 0.012, 0.88], [L - 0.02, 0.8],
+      [L - 0.03, 0.7], [L - 0.035, 0.64], [L - 0.06, 0.585], [L - 0.085, 0.52], [L - 0.085, 0.47], [L - 0.05, 0.43], [L + 0.1, 0.42], [0.95, 0.4]], 3);
+  };
+  const DV = []; for (let v = -0.84; v <= 0.8401; v += 0.03) DV.push(+v.toFixed(3));
+  push(out, cabLoftV(DV, dashProf, j => j < 12 ? M.dashTop : j < 33 ? M.dash : M.deep, M.dash));
+  const faceU = (v, z) => lipOf(v) - 0.012 - (0.88 - z) * 0.09;   // the dash face, near enough, for things set on it
+  const faceAt = (v, z) => [faceU(v, z), v, z], fN = v3.norm([-1, 0, 0.09]), fUp = v3.norm([0.09, 0, 1]), fR = [0, 1, 0];
+  const onFace = (v0, v1, z0, z1, d0, d1, mat) => planeBox(faceAt(v0, z0), fR, fUp, fN, 0, v1 - v0, 0, (z1 - z0) / fUp[2], d0, d1, mat);
+  // The defroster slot along the glass and the speaker grilles in the dash top's corners
+  const topAt = (u, v) => [u, v, 0.87 + (0.926 - 0.87) * clamp((0.95 - u) / 0.33, 0, 1) + 0.002];
+  push(out, planeBox(topAt(0.875, -0.55), [0, 1, 0], [-1, 0, 0.17], [0, 0, 1], 0, 1.1, 0, 0.03, -0.004, 0.002, M.black));
+  for (const v of [-0.74, 0.6]) push(out, planeBox(topAt(0.78, v), [0, 1, 0], [-1, 0, 0.1], [0, 0, 1], 0, 0.14, 0, 0.09, -0.003, 0.002, M.seam));
+  // The binnacle: a hood rising off the dash top over the dials, its lip, the dark recess they sit in and a lower lip
+  const dv = CEL_GAUGE.dv, BV = []; for (let k = 0; k <= 18; k++) BV.push(dv - 0.26 + 0.52 * k / 18);
+  const hoodProf = () => crPath([[0.72, 0.926], [0.58, 0.952], [0.46, 0.976], [0.4, 0.986], [0.372, 0.98], [0.366, 0.965], [0.382, 0.95], [0.42, 0.944],
+    [0.426, 0.9], [0.426, 0.82], [0.42, 0.8], [0.398, 0.79], [0.405, 0.772], [0.45, 0.768]], 3);
+  push(out, cabLoftV(BV, hoodProf, j => j < 18 ? M.deep : j < 30 ? M.recess : M.deep, M.deep));
+  // The steering column's shroud, from the dash to the wheel
+  const W = CEL_WHEEL, colTop = v3.add(W.C, v3.mul(W.n, -0.05));
+  push(out, cabTube(crPath([[0.47, dv, 0.69], [0.32, dv, 0.705], v3.add(colTop, [0.02, 0, 0])], 4), 0.05, 0.042, [0, 0, -1], M.deep));
+  // The center stack: a block angled toward the driver, its face running from (0.425, -0.03) to (0.375, 0.25)
+  const D0 = [0.425, -0.03], C0 = [0.375, 0.25], ea2 = v3.norm([C0[0] - D0[0], C0[1] - D0[1], 0]), sn = v3.norm([-ea2[1], ea2[0], 0]), sN = sn[0] < 0 ? sn : v3.mul(sn, -1);
+  const sideIn = v3.norm([1, 0, 0]);
+  push(out, cabHex([[0.5, -0.03, 0.5], [0.5, 0.25, 0.5], [D0[0], D0[1], 0.5], [C0[0], C0[1], 0.5], [0.5, -0.03, 0.905], [0.5, 0.25, 0.905], [D0[0], D0[1], 0.905], [C0[0], C0[1], 0.905]], M.dash));
+  void sideIn;
+  const SL = Math.hypot(C0[0] - D0[0], C0[1] - D0[1]), so = [D0[0], D0[1], 0], sb = (a0, a1, z0, z1, d0, d1, mat) => planeBox(so, ea2, [0, 0, 1], sN, a0, a1, z0, z1, d0, d1, mat);
+  for (const [a0, a1] of [[0.02, 0.13], [0.152, 0.262]]) {   // the two vents and their slats
+    push(out, sb(a0, a1, 0.8, 0.885, -0.003, 0.002, M.black));
+    for (let k = 1; k < 6; k++) push(out, sb(a0 + 0.004, a1 - 0.004, 0.8 + k * 0.0142 - 0.002, 0.8 + k * 0.0142 + 0.002, 0.002, 0.007, M.slat));
+  }
+  push(out, sb(0.03, SL - 0.03, 0.7, 0.775, -0.002, 0.004, M.radio));             // the cassette radio
+  push(out, sb(0.095, 0.185, 0.742, 0.762, 0.004, 0.006, M.display));             // its green display
+  push(out, sb(0.06, SL - 0.06, 0.712, 0.72, 0.004, 0.0055, M.slat));              // the tape slot
+  for (const a of [0.05, SL - 0.05]) push(out, sb(a - 0.011, a + 0.011, 0.73, 0.752, 0.004, 0.016, M.silver));   // its knobs
+  push(out, sb(0.02, SL - 0.02, 0.6, 0.688, -0.002, 0.003, M.deep));             // the climate panel
+  [[0.668, 0.35, M.red], [0.646, 0.6, M.white], [0.624, 0.2, M.white]].forEach(([z, pos, m]) => {
+    push(out, sb(0.04, SL - 0.04, z - 0.003, z + 0.003, 0.003, 0.004, M.black));
+    const a = 0.05 + (SL - 0.1) * pos; push(out, sb(a - 0.009, a + 0.009, z - 0.008, z + 0.008, 0.003, 0.014, m));
+  });
+  [[0.04, M.ledG], [0.115, M.ledA], [0.19, M.ledA]].forEach(([a, led]) => { push(out, sb(a, a + 0.055, 0.553, 0.58, 0.002, 0.009, M.deep)); push(out, sb(a + 0.022, a + 0.033, 0.567, 0.574, 0.009, 0.0105, led)); });
+  // The long vents at the dash ends and the glovebox's outline and latch
+  for (const v of [-0.79, 0.62]) { push(out, onFace(v, v + 0.15, 0.835, 0.885, -0.004, 0.002, M.black)); for (let k = 1; k < 8; k++) push(out, onFace(v + k * 0.0188 - 0.002, v + k * 0.0188 + 0.002, 0.838, 0.882, 0.002, 0.006, M.slat)); }
+  for (const z of [0.585, 0.745]) push(out, onFace(0.3, 0.64, z, z + 0.004, -0.001, 0.002, M.seam));
+  for (const v of [0.3, 0.636]) push(out, onFace(v, v + 0.004, 0.585, 0.749, -0.001, 0.002, M.seam));
+  push(out, onFace(0.44, 0.5, 0.71, 0.725, 0.001, 0.008, M.silver));
+  // The tunnel console between the seats, the shifter's boot and the handbrake
+  push(out, celRound(-0.8, 0.5, -0.11, 0.17, 0.2, 0.45, M.deep, M.deep, 0.04));
+  push(out, cabLathe([CEL_LEVER.piv[0], CEL_LEVER.piv[1], 0.445], [CEL_LEVER.piv[0], CEL_LEVER.piv[1], 0.53], t => 0.06 * (1 - t) + 0.012 * t + 0.008 * Math.sin(t * Math.PI * 5) * (1 - t), M.leather));
+  push(out, celRound(-0.56, -0.26, -0.01, 0.05, 0.445, 0.5, M.black, M.silver, 0.02));
+  // The floor and the footwells, dark under the dash
+  push(out, celGrid(2, 2, false, (i, j) => [i ? 0.62 : -0.9, j ? 0.8 : -0.8, 0.2], () => M.carpet, 0, () => [0, 0, 1]));
+  push(out, celGrid(2, 2, false, (i, j) => [0.6, j ? 0.8 : -0.8, i ? 0.44 : 0.2], () => M.carpet, 0, () => [-1, 0, 0]));
+  // The doors: a sill cap along the window line, the card below with its cloth insert, the armrest and its pull cup,
+  // the window crank, the release handle, the speaker grille and the lock knob
+  for (const s of [-1, 1]) {
+    const DU = []; for (let u = -0.85; u <= 0.5001; u += 0.05) DU.push(u);
+    const prof = crPath([[0.835, 0.905], [0.8, 0.906], [0.776, 0.897], [0.766, 0.877], [0.775, 0.85], [0.79, 0.78], [0.786, 0.62], [0.776, 0.5], [0.781, 0.38], [0.795, 0.28], [0.8, 0.2]], 3);
+    push(out, celGrid(DU.length, prof.length, false, (i, j) => [DU[i], s * prof[j][0], prof[j][1]], (i, j) => j > 12 && j < 18 ? M.cloth : M.door, 0, () => [0, -s, 0.5]));
+    push(out, celRound(-0.48, 0.02, ...(s < 0 ? [-0.785, -0.7] : [0.7, 0.785]), 0.6, 0.665, M.door, M.door, 0.03));
+    push(out, planeBox([-0.2, s * 0.735, 0.666], [1, 0, 0], [0, s, 0], [0, 0, 1], 0, 0.12, -0.02, 0.02, -0.002, 0.001, M.recess));
+    const hub = [0.02, s * 0.775, 0.73];
+    push(out, cabLathe(hub, v3.add(hub, [0, -s * 0.02, 0]), t => 0.022 * (1 - t * 0.5), M.silver, 3));
+    push(out, planeBox(v3.add(hub, [-0.005, -s * 0.02, 0]), [0, 0, -1], [1, 0, 0], [0, -s, 0], -0.008, 0.09, -0.008, 0.008, 0, 0.008, M.silver));
+    push(out, cabLathe(v3.add(hub, [0, -s * 0.028, -0.085]), v3.add(hub, [0, -s * 0.06, -0.085]), t => 0.012, M.black, 2));
+    push(out, planeBox([0.22, s * 0.778, 0.76], [1, 0, 0], [0, 0, 1], [0, -s, 0], 0, 0.06, 0, 0.025, 0, 0.012, M.silver));
+    push(out, planeBox([0.18, s * 0.779, 0.3], [1, 0, 0], [0, 0, 1], [0, -s, 0], 0, 0.22, 0, 0.13, -0.002, 0.006, M.seam));
+    push(out, cabLathe([-0.6, s * 0.79, 0.9], [-0.6, s * 0.79, 0.935], t => 0.008, M.black, 2));
+  }
+  // The A-pillars, the header over the glass, the headliner and its edges down to the window tops
+  for (const s of [-1, 1]) push(out, cabTube(crPath([[0.94, s * 0.79, 0.895], [0.55, s * 0.75, 1.06], [0.13, s * 0.7, 1.232]], 6), 0.045, 0.024, [0, -s, -0.3], M.door));
+  push(out, cabTube(crPath([[0.13, -0.72, 1.236], [0.13, 0, 1.244], [0.13, 0.72, 1.236]], 6), 0.032, 0.022, [-0.4, 0, -1], M.headliner));
+  push(out, celGrid(14, 16, false, (i, j) => { const u = 0.12 - i * 0.11, v = -0.72 + j * 0.096; return [u, v, 1.25 - 0.035 * (v / 0.72) * (v / 0.72)]; }, () => M.headliner, 0, () => [0, 0, -1]));
+  for (const s of [-1, 1]) push(out, celGrid(14, 3, false, (i, j) => [0.12 - i * 0.11, s * (0.72 + 0.03 * j), 1.215 - 0.025 * j], () => M.headliner, 0, () => [0, -s, -0.5]));
+  // The sun visors, folded up, and the rear-view mirror on its stem
+  for (const s of [-1, 1]) push(out, celRound(0.14, 0.38, ...(s < 0 ? [-0.68, -0.1] : [0.1, 0.68]), 1.21, 1.232, M.visor, M.visor, 0.015));
+  push(out, celRound(0.15, 0.185, -0.115, 0.115, 1.125, 1.19, M.black, M.black, 0.012));
+  push(out, planeBox([0.148, -0.105, 1.133], [0, 1, 0], [0, 0, 1], [-1, 0, 0], 0, 0.21, 0, 0.049, 0, 0.002, M.mirror));
+  push(out, planeBox([0.16, -0.012, 1.19], [0, 1, 0], [0, 0, 1], [1, 0, 0], 0, 0.024, 0, 0.05, 0, 0.012, M.black));
+  // The wheel (drawn turned about its column): the rim, three spokes, a padded center and the Toyota emblem
+  const rimPath = []; for (let k = 0; k <= 48; k++) { const t = k / 48 * Math.PI * 2; rimPath.push(v3.add(W.C, v3.add(v3.mul(W.r, W.R * Math.cos(t)), v3.mul(W.w, W.R * Math.sin(t))))); }
+  push(wheel, cabTube(rimPath, 0.016, 0.0145, i => { const t = i / 48 * Math.PI * 2; return v3.add(v3.mul(W.r, Math.cos(t)), v3.mul(W.w, Math.sin(t))); }, M.leather));
+  for (const t of [0, Math.PI, Math.PI * 1.5]) {
+    const d = v3.add(v3.mul(W.r, Math.cos(t)), v3.mul(W.w, Math.sin(t))), back = v3.mul(W.n, -0.012);
+    push(wheel, cabTube([v3.add(W.C, v3.add(back, v3.mul(d, 0.05))), v3.add(W.C, v3.add(back, v3.mul(d, 0.12))), v3.add(W.C, v3.add(v3.mul(W.n, -0.004), v3.mul(d, W.R - 0.008)))], 0.024, 0.009, W.n, M.leather));
+  }
+  const pad = celRound(-0.03, 0.022, -0.078, 0.078, -0.058, 0.048, M.leather, M.leather, 0.022);
+  // (built along u, then laid into the wheel's frame: u toward the dash (-n), v along r, z along w)
+  for (let k = 0; k < pad.P.length; k += 3) {
+    const p = [pad.P[k], pad.P[k + 1], pad.P[k + 2]], n = [pad.N[k], pad.N[k + 1], pad.N[k + 2]];
+    pad.P.set(v3.add(W.C, v3.add(v3.mul(W.n, -p[0]), v3.add(v3.mul(W.r, p[1]), v3.mul(W.w, p[2])))), k);
+    pad.N.set(v3.add(v3.mul(W.n, -n[0]), v3.add(v3.mul(W.r, n[1]), v3.mul(W.w, n[2]))), k);
+  }
+  push(wheel, pad);
+  const emb = []; for (let k = 0; k <= 24; k++) { const t = k / 24 * Math.PI * 2; emb.push(v3.add(W.C, v3.add(v3.mul(W.n, 0.032), v3.add(v3.mul(W.r, 0.022 * Math.cos(t)), v3.mul(W.w, 0.015 * Math.sin(t)))))); }
+  push(wheel, cabTube(emb, 0.0022, 0.0022, W.n, M.silver));
+  // The shift lever (drawn turned about its pivot by the gear): the rod and the knob
+  const L = CEL_LEVER.piv, top = v3.add(L, [-0.025, 0, 0.23]);
+  push(lever, cabLathe(L, top, () => 0.0075, M.black, 4));
+  push(lever, cabLathe(v3.add(top, [0, 0, -0.012]), v3.add(top, [0, 0, 0.046]), t => 0.026 * Math.sqrt(Math.max(0, Math.sin(t * Math.PI))) + 0.004, M.black, 8));
+  return {out, wheel, lever};
+}
+// The cab's buffers (built with the body's, in celgInit)
+function celgCabBuffers(gl, quadsOf, send) {
+  const m = celCabMesh(), pack = list => { const arr = []; for (const g of list) quadsOf(g, q => g.M[q], arr); return arr; };
+  const a = pack(m.out), b = pack(m.wheel), c = pack(m.lever);
+  CELG.cab = send(a); CELG.nCab = a.length / 7; CELG.cabWheel = send(b); CELG.nCabWheel = b.length / 7; CELG.cabLever = send(c); CELG.nCabLever = c.length / 7;
+}
+// Is the smooth cockpit in use? (the Celica, a 3D cockpit setting, the WebGL renderer working)
+function celCabOn() { return CFG.body === 'celica' && !SHOWCASE && SETTINGS.cockpit !== '2d' && glsOn() && celgInit() && !!CELG.cab; }
+// The material tables as the shader wants them
+function celgMatArrays(list, extra) {
+  const mc = new Float32Array(128), mp = new Float32Array(128);
+  list.forEach((M, i) => { if (!M) return; mc.set([M.c[0] / 255, M.c[1] / 255, M.c[2] / 255, M.em], i * 4); mp.set([M.rb, M.rg, M.ks, M.sh], i * 4); });
+  if (extra) extra(mc, mp);
+  return [mc, mp];
+}
+// Draw the cockpit: the body beyond the dash, then the cab, the wheel and the lever, all from the eye; copy it over the
+// world; then the 2D instruments in their places
+function drawCelicaCabGL() {
+  const gl = GLT.gl, T = GLT, P = T.pad, Wc = VW + 2 * P, Hc = VH + 2 * P, E = eyePos(), H0 = VH * CEL_CAB.hor, L = CELG.loc;
+  const c = Math.cos(S.h), s = Math.sin(S.h), Lx = Math.cos(SUN_AZ) * 0.68, Ly = Math.sin(SUN_AZ) * 0.68;
+  const night = isNightMap() ? (nightCover(S.x, S.y) === 2 ? [0.2, 0.2, 0.22] : [0.36, 0.34, 0.4]) : [1, 1, 1];
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true); gl.disable(gl.CULL_FACE);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(CELG.prog);
+  // cab mode: the car's frame is the world, the eye the camera
+  gl.uniform3f(L.uCam, E.u, E.v, E.z); gl.uniform2f(L.uCS, 1, 0); gl.uniform1f(L.uF, F); gl.uniform2f(L.uCtr, P + VW / 2, P + H0); gl.uniform2f(L.uSize, Wc, Hc);
+  gl.uniform2f(L.uNF, 0.03, 80); gl.uniform3f(L.uO, 0, 0, 0); gl.uniform3f(L.uFx, 1, 0, 0); gl.uniform3f(L.uRx, 0, 1, 0); gl.uniform3f(L.uUx, 0, 0, 1); gl.uniform1f(L.uPt, 0);
+  gl.uniform3f(L.uSun, Lx * c + Ly * s, -Lx * s + Ly * c, 0.73); gl.uniform1f(L.uAlpha, 1); gl.uniform1f(L.uTr, CFG.r);
+  const attr = () => { gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 28, 12); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 24); };
+  gl.enableVertexAttribArray(0); gl.enableVertexAttribArray(1); gl.enableVertexAttribArray(2);
+  // The body beyond the glass (cut away inside the cabin)
+  const paint = CFG.paint || CARS.celica.paint, pc = glsCol(paint);
+  const [emc, emp] = celgMatArrays(CEL_FIXED, (mc, mp) => {
+    mc.set([pc[0] / 255, pc[1] / 255, pc[2] / 255, 0], 0); mp.set([0.07, 0.5, 0.55, 60], 0);
+    mc.set([pc[0] * 0.42 / 255, pc[1] * 0.42 / 255, pc[2] * 0.42 / 255, 0], 16); mp.set([0.02, 0.1, 0.05, 10], 16);
+    for (let k = 0; k < 4; k++) { const Mx = CEL_FIXED[CEL_MATS.lens]; mc.set([Mx.c[0] / 255, Mx.c[1] / 255, Mx.c[2] / 255, Mx.em], (CEL_LENS0 + k) * 4); mp.set([Mx.rb, Mx.rg, Mx.ks, Mx.sh], (CEL_LENS0 + k) * 4); }
+  });
+  gl.uniform4fv(L.uMc, emc); gl.uniform4fv(L.uMp, emp); gl.uniform3fv(L.uNight, night); gl.uniform1f(L.uSunK, 1); gl.uniform2f(L.uAmb, 0.46, 0.16); gl.uniform3f(L.uClip, 1, 0.93, 0.77);
+  gl.uniform1f(L.uWheel, 0); gl.bindBuffer(gl.ARRAY_BUFFER, CELG.body); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nBody);
+  const pop = popEase(S.pop || 0);
+  if (pop > 0.001) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, CELG.pocket); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nPocket);
+    gl.uniform1f(L.uWheel, 2); gl.uniform3f(L.uPod, 1.76, 0.6, -CEL_POP_DOWN * (1 - pop));
+    gl.bindBuffer(gl.ARRAY_BUFFER, CELG.pod); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nPod);
+  }
+  // The cab, lit more softly (the roof shades it)
+  const [cmc, cmp] = celgMatArrays(CAB_MATS);
+  gl.uniform4fv(L.uMc, cmc); gl.uniform4fv(L.uMp, cmp); gl.uniform1f(L.uSunK, 0.5); gl.uniform2f(L.uAmb, 0.66, 0.06); gl.uniform3f(L.uClip, 0, 0, 0);
+  gl.uniform3fv(L.uNight, night.map(x => x * 0.92));
+  gl.uniform1f(L.uWheel, 0); gl.bindBuffer(gl.ARRAY_BUFFER, CELG.cab); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nCab);
+  // the wheel, turned about its column
+  const W = CEL_WHEEL;
+  gl.uniform1f(L.uWheel, 3); gl.uniform3fv(L.uPiv, W.C); gl.uniformMatrix3fv(L.uRot, false, colMajor(axisRot(W.n, -(S.swA || 0))));
+  gl.bindBuffer(gl.ARRAY_BUFFER, CELG.cabWheel); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nCabWheel);
+  // the lever, turned about its pivot to where the gear is in the gate
+  const g = S.grinding ? S.grindG : S.gear, slots = CFG.gate.slots, [gx, gy] = slots[String(g)] || slots['0'], [nx, ny] = slots['0'], half = S.grinding ? 0.5 : 1;
+  const fa = (ny - gy) / 30 * 0.2 * half, sa = -(gx - nx) / 35 * 0.16 * half;
+  const Ry = [Math.cos(fa), 0, Math.sin(fa), 0, 1, 0, -Math.sin(fa), 0, Math.cos(fa)], Rx = [1, 0, 0, 0, Math.cos(sa), -Math.sin(sa), 0, Math.sin(sa), Math.cos(sa)];
+  gl.uniform3fv(L.uPiv, CEL_LEVER.piv); gl.uniformMatrix3fv(L.uRot, false, colMajor(mat3mul(Ry, Rx)));
+  gl.bindBuffer(gl.ARRAY_BUFFER, CELG.cabLever); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nCabLever);
+  gl.uniform1f(L.uWheel, 0); gl.uniform2f(L.uNF, 0.5, 2000); gl.uniform1f(L.uSunK, 1); gl.uniform2f(L.uAmb, 0.46, 0.16);
+  gl.disable(gl.BLEND);
+  ctx.drawImage(T.cv, -P, -P, Wc, Hc);
+  // The instruments, as crisp 2D widgets in their places on the dash
+  const G = CEL_GAUGE, CX = {E, H0, ix: {style: 't180'}, bu: G.bu, D: G.D, driverV: G.dv, full: SETTINGS.quality === 'full'};
+  cabDialsStyled(CX);
+  const pd0 = cabPoint(E, H0, 0.448, -0.83, 0.82), pd1 = cabPoint(E, H0, 0.448, -0.67, 0.7);
+  if (pd0 && pd1) dashPedals(pd0.x, pd0.y, pd1.x - pd0.x, pd1.y - pd0.y, 'rgba(18,18,20,0.85)');
+  const gp0 = cabPoint(E, H0, 0.448, 0.32, 0.83), gp1 = cabPoint(E, H0, 0.448, 0.56, 0.69);
+  if (gp0 && gp1) gatePlate(gp0.x, gp0.y, gp1.x - gp0.x, gp1.y - gp0.y, 'rgba(18,18,20,0.85)');
+  if (CFG.turbo || CFG.sc) { const pb = cabPoint(E, H0, 0.86, -0.72, 0.97); if (pb) pillarBoost(pb.x, pb.y, 0.028 * pb.k); }
+}
+const colMajor = m => [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]];
+const mat3mul = (a, b) => { const o = []; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) o.push(a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j]); return o; };
 
 /* ---------- the WebGL scenery ---------- */
 // Stage 2: the trees, houses, offices, the speedway's stands, walls and crowd, and the forest's fans, on the graphics
@@ -9485,7 +9803,7 @@ function drawSportInterior(ix) {
 function has3dCab() { return !SHOWCASE && ((CFG.ix && (CFG.ix.bike || CFG.ix.horse)) || (SETTINGS.cockpit !== '2d' && !!cabSpec(CFG.body))); }
 function eyePos() { const e = cabSpec(CFG.body).eye; return {u: e.u + SWAY.u, v: e.v + SWAY.v + (SWAY.vb || 0), z: e.z + SWAY.z}; }
 // Where the cab is in a car: the hand-built pickup's figures, or worked out from the car's 3D model (see cabGeom)
-function cabSpec(body) { return CAB3D[body] || cabGeom(body); }// The eye's view of a point in the car's frame: [right, up, forward], in meters
+function cabSpec(body) { return body === 'celica' && celCabOn() ? CEL_CAB : CAB3D[body] || cabGeom(body); }   // (the smooth Celica cockpit has its own eye)// The eye's view of a point in the car's frame: [right, up, forward], in meters
 function cabCam(E, u, v, z) { return [v - E.v, z - E.z, u - E.u]; }
 // Clips a polygon (in eye space) to what is in front of the near plane
 function clipNear(pts, near = 0.04) {
@@ -9982,7 +10300,7 @@ function drawHorseView() {
 function drawInterior() {
   if (CFG.ix && CFG.ix.horse) { drawHorseView(); return; }
   if (CFG.ix && CFG.ix.bike) { drawBikeView(); return; }
-  if (has3dCab()) { if (CFG.body === 'pickup') drawPickupInterior3D(); else drawCab3D(); return; }
+  if (has3dCab()) { if (CFG.body === 'pickup') drawPickupInterior3D(); else if (celCabOn()) drawCelicaCabGL(); else drawCab3D(); return; }
   if (CFG.body === 'celica') drawCelicaInterior(); else if (CFG.body === 'ram') drawRamInterior();
   else if (CARS[CFG.body] && CARS[CFG.body].ix) drawSportInterior(CARS[CFG.body].ix); else drawPickupInterior();
 }
