@@ -2150,7 +2150,7 @@ CARS.pickup.shape = {track: 0.7, tw: 0.11, axles: [-1.45, 1.35], parts: parts(
 // The sail panels are kind 'r' so they draw after the glass beside them (as the roof does).
 CARS.celica.paint = '#2f6b6e';
 // The raised pop-ups for the box model (Classic), added while the lamps are up
-const CEL_POP_BOXES = parts(sym('pp', 1.72, 1.98, 0.36, 0.8, 0.6, 0.78), sym('pl', 1.98, 2.0, 0.38, 0.57, 0.63, 0.76), sym('pl', 1.98, 2.0, 0.59, 0.78, 0.63, 0.76));
+const CEL_POP_BOXES = parts(sym('pp', 1.86, 2.085, 0.42, 0.72, 0.6, 0.77), sym('pl', 2.085, 2.1, 0.44, 0.57, 0.63, 0.75), sym('pl', 2.085, 2.1, 0.59, 0.7, 0.63, 0.75));
 CARS.celica.shape = {track: 0.73, tw: 0.095, axles: [-1.26, 1.26], hub: '#a9aaa6', parts: parts(
   // the bumper and nose, each split into a middle and two corners for the depth sort
   nose(2.12, 2.22, 0.8, 0.22, 0.48, 0.42), full('k', 2.22, 2.235, 0.46, 0.26, 0.37),                    // bumper and its lower intake
@@ -8148,7 +8148,7 @@ function celRound(u0, u1, v0, v1, z0, z1, mat, faceMat = mat, rr = 0.02) {
 let CEL_MESH = null;
 function celMesh() {
   if (CEL_MESH) return CEL_MESH;
-  const C = CEL, M = CEL_MATS, out = [], pods = [], pocket = [];
+  const C = CEL, M = CEL_MATS, out = [], pods = [], pocket = [], popLenses = [];
   // The lower body: stations along the car, dense round the wheel arches and the round ends
   let U = [];
   for (let k = 0; k <= 12; k++) U.push(C.uT0 - (C.uT0 - C.uT) * Math.pow(Math.cos(k / 12 * Math.PI / 2), 2 / C.mT));
@@ -8215,8 +8215,20 @@ function celMesh() {
       line(a => uB + (uL - uB) * a, (a, b) => vEdge(uB + (uL - uB) * a) - 0.004 + 0.008 * b, 10),                              // outer edge
       line(a => uB + 0.008 * a, (a, b) => vIn + (vEdge(uB) - vIn) * b, 1), line(a => uL - 0.008 + 0.008 * a, (a, b) => vIn + (vEdge(uL) - vIn) * b, 1));   // back edge, the lip
     // raised (L): the pod, body color with a black bezel round its lamps, swung up out of a dark pocket in the hood
-    pods.push(celRound(1.74, 1.952, ...(s > 0 ? [0.42, 0.79] : [-0.79, -0.42]), 0.58, 0.765, M.paint, M.trim, 0.025));
-    pocket.push(celPatch((a, b) => { const u = uB + 0.006 + (1.968 - uB - 0.006) * a; return C.top(u, s * (vIn + 0.006 + (vEdge(u) - vIn - 0.012) * b)); }, 6, 4, 0.0015, M.liner));   // (just the pod's own opening)
+    // Raised (L), the whole cover tilts up on a hinge along its back edge: a wedge, triangular from the side, its top the
+    // body-color cover running to the hood's lip, its sides black, the lamps in its tall front face (CEL_POP: the hinge
+    // and how far it turns down to lie flush)
+    const hz = u => C.top(u, s * 0.6)[2], uF = 2.085, Hz = hz(uB) + 0.004, Tz = hz(uF) + 0.15, vI = vIn + 0.006, vO = u => vEdge(u) - 0.006;
+    const zt = u => Hz + (u - uB) / (uF - uB) * (Tz - Hz), zb = u => hz(u) - 0.035, WU = []; for (let k = 0; k <= 10; k++) WU.push(uB + (uF - uB) * k / 10);
+    pods.push(celGrid(WU.length, 2, false, (i, j) => [WU[i], s * (j ? vO(WU[i]) : vI), zt(WU[i])], () => M.paint, 0, () => [0, 0, 1]),
+      celGrid(WU.length, 2, false, (i, j) => [WU[i], s * vO(WU[i]), j ? zt(WU[i]) : zb(WU[i])], () => M.trim, 0, () => [0, s, 0]),
+      celGrid(WU.length, 2, false, (i, j) => [WU[i], s * vI, j ? zt(WU[i]) : zb(WU[i])], () => M.trim, 0, () => [0, -s, 0]),
+      celGrid(2, 2, false, (i, j) => [uF, s * (j ? vO(uF) : vI), i ? zt(uF) : zb(uF)], () => M.trim, 0, () => [1, 0, 0]));
+    const mid = (vI + vO(uF)) / 2;
+    for (const [a, b] of [[vI + 0.012, mid - 0.006], [mid + 0.006, vO(uF) - 0.012]])
+      popLenses.push(celBox(uF, uF + 0.01, s > 0 ? a : -b, s > 0 ? b : -a, hz(uF) + 0.012, Tz - 0.016, {top: M.trim, side: M.trim, front: M.lens, back: M.trim}, 6e-5));
+    if (s > 0) CEL_POP = {hu: uB, hz: Hz, down: Math.atan2(Tz - Hz, uF - uB) - Math.atan2(hz(uL - 0.005) - Hz, uL - 0.005 - uB)};
+    pocket.push(celPatch((a, b) => { const u = uB + 0.006 + (uL - uB - 0.012) * a; return C.top(u, s * (vIn + 0.006 + (vEdge(u) - vIn - 0.012) * b)); }, 10, 4, 0.0015, M.liner));   // (the cover's opening)
     out.push(celRound(0.62, 0.74, ...(s > 0 ? [0.77, 0.91] : [-0.91, -0.77]), 0.9, 0.97, M.trim, M.trim, 0.03));           // a mirror
     for (const a of C.axles) out.push(...celBox(a - 0.36, a + 0.36, ...(s > 0 ? [0.595, 0.615] : [-0.615, -0.595]), 0.24, 0.69, {top: M.liner, side: M.liner, front: M.liner, back: M.liner}));
   }
@@ -8226,8 +8238,7 @@ function celMesh() {
   for (const s of [-1, 1]) out.push(celRound(-2.03, -1.92, ...(s > 0 ? [0.5, 0.58] : [-0.58, -0.5]), 0.9, 1.005, M.paint, M.paint, 0.02));
   out.push(...celBox(-2.094, -2.082, -0.2, 0.2, 1.004, 1.026, {top: M.red, side: M.red, front: M.red, back: M.red}));
   // The pop-ups' lenses, two to a pod (i: the shape part a damage plan would smash; none, as the shape's lamps are down)
-  const lenses = [[0.435, 0.6, 1], [0.435, 0.6, -1], [0.61, 0.775, 1], [0.61, 0.775, -1]].map(([a, b, sg]) => ({i: -1,
-    boxes: celBox(1.945, 1.958, sg > 0 ? a : -b, sg > 0 ? b : -a, 0.6, 0.745, {top: M.trim, side: M.trim, front: M.lens, back: M.trim}, 6e-5)}));
+  const lenses = popLenses.map(boxes => ({i: -1, boxes}));
   // A wheel: the tire's profile turned round its axle (radius as a share of the tire's, offset outward), then the cover
   const prof = [[0.6, -0.095], [0.9, -0.095], [0.97, -0.083], [1, -0.06], [1, 0.06], [0.97, 0.083], [0.9, 0.095], [0.62, 0.095], [0.62, 0.097], [0.5, 0.104], [0.35, 0.111], [0.18, 0.115], [0, 0.116]];
   const profN = prof.map((q, k) => { const a = prof[Math.max(0, k - 1)], b = prof[Math.min(prof.length - 1, k + 1)], nr = b[1] - a[1], nw = -(b[0] - a[0]), l = Math.hypot(nr, nw) || 1; return [nr / l, nw / l]; });   // square to the profile
@@ -8254,7 +8265,7 @@ function celDamage(plan) {
 // grazing angles). The wheels are one lathed tire and cover, drawn four times, spun and steered in the shader.
 const CELG = {ok: null, prog: null, loc: null, body: null, nBody: 0, wheel: null, nWheel: 0, dmg: new Map(), list: []};
 const CEL_LENS0 = 28;
-const CEL_POP_DOWN = 1.4;   // how far a retracted pop-up is turned nose down about its hinge (radians, about 80 degrees)   // material numbers 28-31: the four pop-up lenses (each can be smashed on its own)
+let CEL_POP = {hu: 1.74, hz: 0.7, down: 0.47};   // the pop-ups' hinge (u, z) and how far they turn down to lie flush, set by celMesh
 function celgInit() {
   if (CELG.ok !== null) return CELG.ok;
   const gl = GLT.gl;
@@ -8426,7 +8437,7 @@ function celgDraw(near, far, cam) {
     if (c.dmg) { gl.bindBuffer(gl.ARRAY_BUFFER, c.dmg.buf); attr(); gl.drawArrays(gl.TRIANGLES, 0, c.dmg.n); }
     if (c.pop > 0.001) {   // the pop-ups on their way up (or up): the dark pockets, then the pods swung about their hinges
       gl.bindBuffer(gl.ARRAY_BUFFER, CELG.pocket); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nPocket);
-      gl.uniform1f(L.uWheel, 2); gl.uniform3f(L.uPod, 1.76, 0.6, -CEL_POP_DOWN * (1 - c.pop));
+      gl.uniform1f(L.uWheel, 2); gl.uniform3f(L.uPod, CEL_POP.hu, CEL_POP.hz, -CEL_POP.down * (1 - c.pop));
       gl.bindBuffer(gl.ARRAY_BUFFER, CELG.pod); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nPod);
     }
     gl.uniform1f(L.uWheel, 1);
@@ -8700,7 +8711,7 @@ function drawCelicaCabGL() {
   const pop = popEase(S.pop || 0);
   if (pop > 0.001) {
     gl.bindBuffer(gl.ARRAY_BUFFER, CELG.pocket); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nPocket);
-    gl.uniform1f(L.uWheel, 2); gl.uniform3f(L.uPod, 1.76, 0.6, -CEL_POP_DOWN * (1 - pop));
+    gl.uniform1f(L.uWheel, 2); gl.uniform3f(L.uPod, CEL_POP.hu, CEL_POP.hz, -CEL_POP.down * (1 - pop));
     gl.bindBuffer(gl.ARRAY_BUFFER, CELG.pod); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nPod);
   }
   // The cab, lit more softly (the roof shades it)
@@ -8708,9 +8719,9 @@ function drawCelicaCabGL() {
   gl.uniform4fv(L.uMc, cmc); gl.uniform4fv(L.uMp, cmp); gl.uniform1f(L.uSunK, 0.5); gl.uniform2f(L.uAmb, 0.66, 0.06); gl.uniform3f(L.uClip, 0, 0, 0);
   gl.uniform3fv(L.uNight, night.map(x => x * 0.92));
   gl.uniform1f(L.uWheel, 0); gl.bindBuffer(gl.ARRAY_BUFFER, CELG.cab); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nCab);
-  // the wheel, turned about its column
+  // the wheel, turned about its column (a positive angle about n, which points at the driver, turns the rim clockwise as the driver sees it: a right turn)
   const W = CEL_WHEEL;
-  gl.uniform1f(L.uWheel, 3); gl.uniform3fv(L.uPiv, W.C); gl.uniformMatrix3fv(L.uRot, false, colMajor(axisRot(W.n, -(S.swA || 0))));
+  gl.uniform1f(L.uWheel, 3); gl.uniform3fv(L.uPiv, W.C); gl.uniformMatrix3fv(L.uRot, false, colMajor(axisRot(W.n, S.swA || 0)));
   gl.bindBuffer(gl.ARRAY_BUFFER, CELG.cabWheel); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nCabWheel);
   // the lever, turned about its pivot to where the gear is in the gate
   const g = S.grinding ? S.grindG : S.gear, slots = CFG.gate.slots, [gx, gy] = slots[String(g)] || slots['0'], [nx, ny] = slots['0'], half = S.grinding ? 0.5 : 1;
