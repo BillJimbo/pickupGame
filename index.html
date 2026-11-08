@@ -4389,6 +4389,9 @@ function physics(dt) {
   // turn slower and less far (half by 22 mph), so a tap of the key is a nudge, not a lunge past the tires' grip
   const tk = CFG.trikeTips ? (S.wh > 0.06 ? 0.3 : 1) / (1 + Math.abs(S.v) / 10) : 1;   // (front wheel up: hardly any steering)
   S.steer = approach(S.steer, stT * 0.5 * tk, dt * 1.4 * DS('steerRate') * tk);
+  // The wheel in the cab: a driver turns it less far and less fast the faster the car goes (the road wheels still follow S.steer)
+  { const k = 1 / (1 + Math.abs(S.v) / 22);
+    S.swA = approach(S.swA || 0, S.steer * STEER_RATIO * (0.35 + 0.65 * k), dt * 9 * k); }
   S.fade = clamp(S.fade + dt * (S.brake * 0.15 - 0.05), 0, 1);
 
   if (S.cranking > 0) {
@@ -8672,7 +8675,7 @@ function shiftOffset(sx, sy) {
 const STEER_RATIO = 14;
 // Steering wheel: rim, spokes at the given angles, and a center pad; turned by the steering input
 function wheel(cx, cy, r, rimW, spokes, spokeW, padR, rimCol, padCol) {
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(S.steer * STEER_RATIO);
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(S.swA || 0);
   ctx.strokeStyle = rimCol; ctx.lineCap = 'round';
   ctx.lineWidth = spokeW;
   for (const a of spokes) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); ctx.stroke(); }
@@ -9079,7 +9082,7 @@ function drawPickupInterior3D() {
     ctx.fillStyle = '#3a352e'; ctx.beginPath(); ctx.arc(knob.x - 0.009 * knob.k, knob.y - 0.009 * knob.k, 0.009 * knob.k, 0, Math.PI * 2); ctx.fill();
   }
   // The steering wheel: a thin rim and four spokes in a plane tilted back toward the driver, turned by the steering
-  const C = {u: 1.28, v: -0.38, z: 1.17}, R = 0.2, tilt = 0.45, rot = -S.steer * STEER_RATIO;
+  const C = {u: 1.28, v: -0.38, z: 1.17}, R = 0.2, tilt = 0.45, rot = -(S.swA || 0);
   const rimPt = a => { const x = Math.cos(a + rot), y = Math.sin(a + rot);   // x across the wheel, y up its face
     return cabPoint(E, H0, C.u - y * R * Math.sin(tilt), C.v + x * R, C.z + y * R * Math.cos(tilt)); };
   const col = cabPoint(E, H0, 1.42, -0.38, 1.12), hub = cabPoint(E, H0, C.u, C.v, C.z);
@@ -9220,7 +9223,7 @@ function drawCab3D() {
   }
   // The wheel: three spokes on the sporty ones, four on the rest
   // Set low enough that its rim passes under the dials rather than across them
-  const C = {u: E.u + 0.5, v: driverV, z: G.eye.z - 0.45}, R = ix.wheel === 3 ? 0.175 : 0.185, tilt = 0.38, rot = -S.steer * STEER_RATIO;
+  const C = {u: E.u + 0.5, v: driverV, z: G.eye.z - 0.45}, R = ix.wheel === 3 ? 0.175 : 0.185, tilt = 0.38, rot = -(S.swA || 0);
   const rimPt = a => { const x = Math.cos(a + rot), y = Math.sin(a + rot); return cabPoint(E, H0, C.u - y * R * Math.sin(tilt), C.v + x * R, C.z + y * R * Math.cos(tilt)); };
   const hub = cabPoint(E, H0, C.u, C.v, C.z), colm = cabPoint(E, H0, C.u + 0.16, C.v, C.z - 0.08);
   ctx.strokeStyle = '#141416'; ctx.lineCap = 'round';
