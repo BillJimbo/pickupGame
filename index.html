@@ -5967,7 +5967,8 @@ function drawRamModelRaw() {
   if (dmg) drawDamagePatches(cp, dmg);
 }
 // The Celica ST coupe: drawn from its parts list (CARS.celica.shape) like the roster cars
-function drawCelicaModel() { queued(() => drawShapeModelRaw(CARS.celica)); }
+// (smooth on WebGL within 70 m of the camera; farther off, on Classic, or if its shader fails, the box model)
+function drawCelicaModel() { if (GLC.rec && Math.hypot(CAMX - S.x, CAMY - S.y) < 70 && celgInit()) drawCelicaSmooth(); else queued(() => drawShapeModelRaw(CARS.celica)); }
 // A roster car seen from outside, built from its parts list (see the key above the roster cars).
 // Same order as the hand-built cars: wheels first, then the body by distance, glass (-5e8), spoilers (-6e8), roof last (-1e9).
 // Visible damage on your career car's model, worse as its body condition falls. Each car has its own fixed layout of
@@ -6121,7 +6122,8 @@ function drawModelOf(b) {
   const night = isNightMap() && !SHOWCASE;
   RIGID = rigidPlane(b);
   if (night) NIGHT_K = nightCarLevel(S.x, S.y);   // (Midnight City: the parts darken, and its lamps come on)
-  if (b === 'ram') drawRamModel();
+  if (b === 'celica') drawCelicaModel();
+  else if (b === 'ram') drawRamModel();
   else if (CARS[b] && CARS[b].shape) queued(() => drawShapeModelRaw(CARS[b]));
   else drawTruckModel();
   if (night) { NIGHT_K = null; drawCarLights(b); }
@@ -7825,7 +7827,7 @@ const GLC = {on: false, rec: false, cx: 0, cy: 0, seq: 0, reach: 399, ds: [], n:
 const GLC_V = 180000;   // vertices kept for each list (a car is about 700)
 function glcList() { const b = new ArrayBuffer(GLC_V * 28); return {f: new Float32Array(b), u: new Uint32Array(b)}; }
 function glcBegin(on) {
-  GLC.on = on; GLC.rec = false; GLC.ds.length = 0; GLC.n = GLC.nT = GLC.nG = 0;
+  GLC.on = on; GLC.rec = false; GLC.ds.length = 0; GLC.n = GLC.nT = GLC.nG = 0; CELG.list.length = 0;
   if (on && !GLC.o) { const gl = GLT.gl; GLC.o = glcList(); GLC.t = glcList(); GLC.g = glcList(); GLC.vbo = gl.createBuffer(); GLC.tbo = gl.createBuffer(); GLC.gbo = gl.createBuffer(); }
 }
 // A vehicle (or anything else made of boxes) for this frame: recorded now on WebGL, or left to the painter on Classic
@@ -7917,6 +7919,392 @@ function glcHalo(x, y, z, rad, r, g, b, alpha) {
 function glcUpload() {
   const gl = GLT.gl, send = (vb, L, n) => { if (n) { gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(L.f.buffer, 0, n * 7), gl.DYNAMIC_DRAW); } };
   send(GLC.vbo, GLC.o, GLC.n); send(GLC.tbo, GLC.t, GLC.nT); send(GLC.gbo, GLC.g, GLC.nG);
+}
+
+/* ---------- the smooth Celica (WebGL) ---------- */
+// On WebGL the 1991 Celica ST coupe is drawn as a smooth, curved body instead of boxes (Classic keeps the boxes of
+// CARS.celica.shape). The lower body is lofted along the car from cross-sections: each a rounded rectangle (a slightly
+// bulging side, a tight radius at the shoulder through the cabin and a round one at the ends, a crowned hood and trunk),
+// its width tapering into round corners at the nose and tail (superellipses in plan), its bottom lifted into an arch over
+// each wheel. The greenhouse is a second loft standing on it: a raked windshield, the roof, the sloping rear window and a
+// separate trunk, narrowing toward the top. Glass, pillars, seals and the roof are rows and columns of that grid, so their
+// edges are clean lines. Lamps, the grille slot and intake, door seams, the side molding, the cowl, hood and trunk shut
+// lines and the plate are patches laid 2-3 mm over the curved panels. Pop-up headlamps, mirrors, wheel-well liners and the
+// tailpipe are small boxes; the tires are lathed, with the ST's silver wheel covers. All of it is built once in the car's
+// own frame (CEL_MESH). Each frame every vertex is placed through the rigid frame and lit: sun and sky, a highlight, and
+// the sky and ground reflected in the paint and glass (more at grazing angles), so the curves read as curves.
+function monoCurve(K) {   // a smooth curve through [[x, y], ...] (x rising) that never overshoots between its points
+  const n = K.length, X = K.map(k => k[0]), Y = K.map(k => k[1]), d = [], m = [];
+  for (let i = 0; i < n - 1; i++) d.push((Y[i + 1] - Y[i]) / (X[i + 1] - X[i]));
+  for (let i = 0; i < n; i++) m.push(i === 0 ? d[0] : i === n - 1 ? d[n - 2] : d[i - 1] * d[i] <= 0 ? 0 : 2 / (1 / d[i - 1] + 1 / d[i]));
+  return x => {
+    if (x <= X[0]) return Y[0];
+    if (x >= X[n - 1]) return Y[n - 1];
+    let i = 0; while (x > X[i + 1]) i++;
+    const h = X[i + 1] - X[i], t = (x - X[i]) / h, t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * Y[i] + (t3 - 2 * t2 + t) * h * m[i] + (-2 * t3 + 3 * t2) * Y[i + 1] + (t3 - t2) * h * m[i + 1];
+  };
+}
+// The body's shape, from the real car's dimensions (meters; u forward from the middle of the wheelbase, v right, z up)
+const CEL = (() => {
+  const C = {Wmax: 0.85, uN0: 1.8, uN: 2.22, mN: 2.6, uT0: -1.93, uT: -2.19, mT: 2.7, axles: [-1.26, 1.26], RA: 0.37, AZ: 0.3, track: 0.73};
+  C.zs = monoCurve([[-2.19, 0.84], [-2.12, 0.9], [-1.95, 0.918], [-1.55, 0.908], [-1.1, 0.875], [-0.5, 0.862], [0.5, 0.858], [0.88, 0.84], [1.05, 0.8],
+    [1.3, 0.75], [1.6, 0.7], [1.9, 0.652], [2.08, 0.612], [2.18, 0.57], [2.22, 0.53]]);                  // the shoulder: trunk, belt line, fender tops
+  C.cr = monoCurve([[-2.19, 0], [-2.02, 0.02], [-1.6, 0.02], [-1.45, 0], [0.9, 0], [1.05, 0.03], [2.0, 0.03], [2.22, 0]]);   // crown of the trunk and hood
+  C.zb = monoCurve([[-2.19, 0.38], [-2.15, 0.29], [-2.05, 0.255], [-1.8, 0.24], [-1.0, 0.215], [1.0, 0.215], [1.85, 0.232], [2.1, 0.25], [2.19, 0.27], [2.22, 0.31]]);
+  C.rt = monoCurve([[-2.19, 0.09], [-1.4, 0.09], [-1.1, 0.045], [0.8, 0.045], [1.1, 0.09], [2.22, 0.09]]);   // shoulder radius
+  C.zr = monoCurve([[-1.6, 0.86], [-1.52, 0.9], [-1.45, 0.96], [-1.3, 1.06], [-1.12, 1.16], [-0.95, 1.232], [-0.78, 1.27], [-0.5, 1.292], [-0.2, 1.296],
+    [0.0, 1.288], [0.12, 1.27], [0.3, 1.205], [0.5, 1.12], [0.7, 1.02], [0.85, 0.935], [0.95, 0.87], [1.0, 0.8]]);   // the greenhouse's top line
+  C.Wb = monoCurve([[-1.6, 0.72], [-1.3, 0.76], [0.6, 0.76], [0.85, 0.72], [1.0, 0.62]]);                                 // its half width at the belt
+  C.Wt = monoCurve([[-1.6, 0.6], [-1.3, 0.63], [-0.9, 0.665], [-0.3, 0.68], [0.3, 0.665], [1.0, 0.6]]);       // and at the top
+  C.W = u => u > C.uN0 ? C.Wmax * Math.pow(Math.max(0, 1 - Math.pow((u - C.uN0) / (C.uN - C.uN0), C.mN)), 1 / C.mN)
+    : u < C.uT0 ? C.Wmax * Math.pow(Math.max(0, 1 - Math.pow((C.uT0 - u) / (C.uT0 - C.uT), C.mT)), 1 / C.mT) : C.Wmax;
+  C.z0 = u => { let z = C.zb(u); for (const a of C.axles) { const d = u - a; if (Math.abs(d) < C.RA) z = Math.max(z, C.AZ + Math.sqrt(C.RA * C.RA - d * d)); } return z; };
+  // A point on the right half of the section at u: r runs 0-5 from the bottom center, round the lower corner (1-2), up
+  // the side (2-3), round the shoulder (3-4) and across the top to the center (5). Returns [v, z].
+  C.half = (u, r) => {
+    const W = C.W(u), zb = C.z0(u), zs = Math.max(C.zs(u), zb + 0.02), H = zs - zb, Wc = W * 0.95;
+    const rt = Math.min(C.rt(u), 0.45 * H, Wc * 0.95), rb = Math.min(0.06, 0.3 * H, Wc * 0.95), cr = C.cr(u);
+    const seg = Math.min(4, Math.floor(r)), t = r - seg;
+    if (seg === 0) return [t * (Wc - rb), zb];
+    if (seg === 1) { const a = -Math.PI / 2 + t * Math.PI / 2; return [Wc - rb + rb * Math.cos(a), zb + rb + rb * Math.sin(a)]; }
+    if (seg === 2) { const s = 2 * t - 1; return [Wc + (W - Wc) * (1 - s * s), zb + rb + t * (H - rb - rt)]; }
+    if (seg === 3) { const a = t * Math.PI / 2; return [Wc - rt + rt * Math.cos(a), zs - rt + rt * Math.sin(a)]; }
+    const w = Wc - rt; return [w * (1 - t), zs + cr * (1 - (1 - t) * (1 - t))];
+  };
+  // Points on the surface by other coordinates (for the patches): the side at a height, the top at a v, the nose or tail
+  // at a v and height (found by halving the search)
+  const bis = (f, lo, hi, n = 26) => { for (let i = 0; i < n; i++) { const m = (lo + hi) / 2; if (f(m)) lo = m; else hi = m; } return (lo + hi) / 2; };
+  C.side = (u, z, s) => { const r = bis(r => C.half(u, r)[1] < z, 1, 4); return [u, s * C.half(u, r)[0], z]; };
+  C.top = (u, v) => { const r = bis(r => C.half(u, r)[0] > Math.abs(v), 3, 5); return [u, v, C.half(u, r)[1]]; };
+  // A point by its distance round the plan outline at height z from the car's center line (negative: the left side),
+  // so a lamp can wrap from the nose or tail onto the side
+  const OUT = new Map();   // (each height's outline is worked out once)
+  C.around = (arc, z, nose) => {
+    const a = Math.abs(arc), s = arc < 0 ? -1 : 1, u0 = nose ? C.uN : C.uT, u1 = nose ? C.uN0 - 0.5 : C.uT0 + 0.5, key = z.toFixed(5) + nose;
+    let pts = OUT.get(key);
+    if (!pts) { pts = []; for (let k = 0; k <= 48; k++) { const t = k / 48, u = u0 + (u1 - u0) * (1 - Math.cos(t * Math.PI / 2)); pts.push([u, Math.abs(C.side(u, z, 1)[1])]); } OUT.set(key, pts); }
+    let L = 0;
+    for (let k = 1; k < pts.length; k++) {
+      const d = Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
+      if (L + d >= a) { const t = (a - L) / d, u = pts[k - 1][0] + (pts[k][0] - pts[k - 1][0]) * t; return C.side(u, z, s); }
+      L += d;
+    }
+    return C.side(u1, z, s);
+  };
+  return C;
+})();
+// Materials: base color, how much is lit regardless of the sun (lamps), reflection at a glance and at grazing angles,
+// and the highlight's strength and tightness. Paint and the damage colors are filled in each frame.
+const CEL_MATS = {paint: 0, under: 1, glass: 2, trim: 3, seam: 4, chrome: 5, amber: 6, red: 7, dred: 8, clear: 9, plate: 10, lens: 11, lensx: 12, cover: 13, tire: 14, liner: 15, slot: 16};
+const CEL_FIXED = [null, {c: [34, 34, 33], em: 0, rb: 0, rg: 0.05, ks: 0.02, sh: 8}, {c: [18, 24, 31], em: 0, rb: 0.3, rg: 0.62, ks: 1.0, sh: 140},
+  {c: [24, 23, 22], em: 0, rb: 0.02, rg: 0.16, ks: 0.12, sh: 14}, null, {c: [196, 197, 192], em: 0.1, rb: 0.55, rg: 0.3, ks: 0.9, sh: 40},
+  {c: [214, 132, 40], em: 0.45, rb: 0.08, rg: 0.3, ks: 0.6, sh: 60}, {c: [186, 34, 26], em: 0.45, rb: 0.08, rg: 0.3, ks: 0.6, sh: 60},
+  {c: [84, 18, 16], em: 0.3, rb: 0.1, rg: 0.3, ks: 0.6, sh: 60}, {c: [226, 222, 212], em: 0.4, rb: 0.1, rg: 0.3, ks: 0.6, sh: 60},
+  {c: [232, 228, 212], em: 0.25, rb: 0.02, rg: 0.1, ks: 0.1, sh: 10}, {c: [236, 232, 214], em: 0.45, rb: 0.15, rg: 0.35, ks: 0.8, sh: 80},
+  {c: [52, 50, 46], em: 0, rb: 0.05, rg: 0.2, ks: 0.3, sh: 30}, {c: [168, 170, 166], em: 0.05, rb: 0.2, rg: 0.35, ks: 0.5, sh: 30},
+  {c: [30, 29, 28], em: 0, rb: 0, rg: 0.06, ks: 0.04, sh: 6}, {c: [18, 17, 16], em: 0, rb: 0, rg: 0, ks: 0, sh: 4}, {c: [58, 59, 57], em: 0, rb: 0.05, rg: 0.1, ks: 0.1, sh: 10}];
+// A grid surface: rows x cols points (flat [u, v, z] arrays), their normals, a material per quad, and whether the rows
+// close round (a loft's section). pull: a hair toward the camera, for patches lying on a panel.
+function celGrid(rows, cols, wrap, pt, matOf, pull = 0, ref = null) {
+  const P = new Float64Array(rows * cols * 3), N = new Float64Array(rows * cols * 3), qc = wrap ? cols : cols - 1, M = new Uint8Array((rows - 1) * qc);
+  for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) P.set(pt(i, j), (i * cols + j) * 3);
+  const at = (i, j) => (i * cols + j) * 3;
+  for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) {
+    const i0 = Math.max(0, i - 1), i1 = Math.min(rows - 1, i + 1), j0 = wrap ? (j - 1 + cols) % cols : Math.max(0, j - 1), j1 = wrap ? (j + 1) % cols : Math.min(cols - 1, j + 1);
+    const a = at(i1, j), b = at(i0, j), c = at(i, j1), d = at(i, j0), o = at(i, j);
+    const du = [P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2]], dr = [P[c] - P[d], P[c + 1] - P[d + 1], P[c + 2] - P[d + 2]];
+    let n = [du[1] * dr[2] - du[2] * dr[1], du[2] * dr[0] - du[0] * dr[2], du[0] * dr[1] - du[1] * dr[0]];
+    // outward: away from the middle of the body (or the given direction)
+    const R = ref ? ref(i, j) : [P[o] * 0.25, P[o + 1], P[o + 2] - 0.55];
+    let L = Math.hypot(...n);
+    if (L < 1e-9) { n = R; L = Math.hypot(...n) || 1; }
+    if (n[0] * R[0] + n[1] * R[1] + n[2] * R[2] < 0) L = -L;
+    N[o] = n[0] / L; N[o + 1] = n[1] / L; N[o + 2] = n[2] / L;
+  }
+  for (let i = 0; i < rows - 1; i++) for (let j = 0; j < qc; j++) M[i * qc + j] = matOf(i, j);
+  return {P, N, rows, cols, wrap, M, pull};
+}
+// A patch laid over the body: f(a, b) gives a surface point for a, b in 0-1; pushed out along the surface by off meters
+function celPatch(f, na, nb, off, mat, pull = 6e-5) {
+  const g = celGrid(na + 1, nb + 1, false, (i, j) => f(i / na, j / nb), () => mat, pull);
+  for (let k = 0; k < g.P.length; k += 3) for (let e = 0; e < 3; e++) g.P[k + e] += g.N[k + e] * off;
+  return g;
+}
+// A box with a flat face per side (faces: top, side, front (+u), back (-u)); returns grids
+function celBox(u0, u1, v0, v1, z0, z1, m, pull = 3e-5) {
+  const q = (pts, n, mat) => { const g = celGrid(2, 2, false, (i, j) => pts[i * 2 + j], () => mat, pull); for (let k = 0; k < 12; k += 3) g.N.set(n, k); return g; };
+  return [q([[u0, v0, z1], [u0, v1, z1], [u1, v0, z1], [u1, v1, z1]], [0, 0, 1], m.top),
+    q([[u0, v1, z0], [u0, v1, z1], [u1, v1, z0], [u1, v1, z1]], [0, 1, 0], m.side), q([[u0, v0, z0], [u0, v0, z1], [u1, v0, z0], [u1, v0, z1]], [0, -1, 0], m.side),
+    q([[u1, v0, z0], [u1, v0, z1], [u1, v1, z0], [u1, v1, z1]], [1, 0, 0], m.front), q([[u0, v0, z0], [u0, v0, z1], [u0, v1, z0], [u0, v1, z1]], [-1, 0, 0], m.back)];
+}
+// A small block with rounded edges (a pop-up, a mirror): a loft along u with a rounded-rectangle section, its edges at
+// both ends turned on a quarter circle of radius rr into flat end faces; the front face and its edge can take their own
+// material (the pop-up's black bezel)
+function celRound(u0, u1, v0, v1, z0, z1, mat, faceMat = mat, rr = 0.02) {
+  const vc = (v0 + v1) / 2, zc = (z0 + z1) / 2, hv = (v1 - v0) / 2, hz = (z1 - z0) / 2, uc = (u0 + u1) / 2, ST = [[u0, 0, 1]];   // [u, edge offset, collapsed]
+  for (let k = 0; k <= 4; k++) { const ph = k / 4 * Math.PI / 2; ST.push([u0 + rr * (1 - Math.cos(ph)), rr * (1 - Math.sin(ph)), 0]); }
+  for (let k = 4; k >= 0; k--) { const ph = k / 4 * Math.PI / 2; ST.push([u1 - rr * (1 - Math.cos(ph)), rr * (1 - Math.sin(ph)), 0]); }
+  ST.push([u1, 0, 1]);
+  const NR = 24, ring = [];
+  for (let j = 0; j < NR; j++) { const a = j / NR * Math.PI * 2, c = Math.cos(a), s = Math.sin(a); ring.push([Math.sign(c) * Math.pow(Math.abs(c), 0.35), Math.sign(s) * Math.pow(Math.abs(s), 0.35)]); }
+  const at = (i, j) => { const [u, off, col] = ST[i]; return col ? [u, vc, zc] : [u, vc + ring[j][0] * (hv - off), zc + ring[j][1] * (hz - off)]; };
+  const k = 4 * Math.max(hv, hz) / (u1 - u0);
+  return celGrid(ST.length, NR, true, at, i => i >= ST.length - 4 ? faceMat : mat, 2e-5, (i, j) => { const p = at(i, j); return [(p[0] - uc) * k, p[1] - vc, p[2] - zc]; });
+}
+let CEL_MESH = null;
+function celMesh() {
+  if (CEL_MESH) return CEL_MESH;
+  const C = CEL, M = CEL_MATS, out = [];
+  // The lower body: stations along the car, dense round the wheel arches and the round ends
+  let U = [];
+  for (let k = 0; k <= 12; k++) U.push(C.uT0 - (C.uT0 - C.uT) * Math.pow(Math.cos(k / 12 * Math.PI / 2), 2 / C.mT));
+  for (let u = C.uT0 + 0.05; u < C.uN0 - 0.025; u += 0.05) U.push(u);
+  for (const a of C.axles) for (const e of [a - C.RA, a + C.RA]) for (const d of [-0.06, -0.03, -0.012, -0.003, 0.003, 0.012, 0.03, 0.06]) U.push(e + d);
+  for (let k = 12; k >= 0; k--) U.push(C.uN0 + (C.uN - C.uN0) * Math.pow(Math.cos(k / 12 * Math.PI / 2), 2 / C.mN));
+  U.sort((a, b) => a - b); U = U.filter((u, i) => i === 0 || u - U[i - 1] > 0.002);
+  const RH = [0, 1, 1.33, 1.67, 2, 2.2, 2.4, 2.6, 2.8, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5, 4.75, 5];
+  const ring = RH.map(r => [r, 1]).concat(RH.slice(1, -1).reverse().map(r => [r, -1]));
+  out.push(celGrid(U.length, ring.length, true, (i, j) => { const [v, z] = C.half(U[i], ring[j][0]); return [U[i], v * ring[j][1], z]; },
+    (i, j) => ring[j][0] < 1.6 && ring[(j + 1) % ring.length][0] < 1.6 ? M.under : M.paint));
+  // The greenhouse: stations from behind the rear window to the foot of the windshield, with a station on every edge of
+  // the glass. A section's right half: buried under the belt, the belt, the top of the window seal, up the side, then
+  // round the roof's edge to the middle of the top.
+  let G = [];
+  for (let u = -1.6; u <= 1.0001; u += 0.04) G.push(u);
+  G.push(0.8, 0.1, 0.07, -0.4, -0.45, -0.92, -0.95, 1.0);
+  G.sort((a, b) => a - b); G = G.filter((u, i) => i === 0 || u - G[i - 1] > 0.006);
+  const gSec = u => {
+    const zr = C.zr(u), zs = C.zs(u), buried = zr - zs < 0.012, zb = buried ? zr - 0.03 : zs, hG = Math.max(0.004, zr - zb), Wb = C.Wb(u), Wt = C.Wt(u);
+    const zs2 = zb + 0.55 * hG, pts = [[1, zb - 0.06], [1, zb], [1, zb + Math.min(0.035, 0.25 * hG)]];
+    for (let k = 1; k <= 4; k++) pts.push([1, pts[2][1] + (zs2 - pts[2][1]) * k / 4]);
+    for (let k = 1; k <= 14; k++) { const a = k / 14 * Math.PI / 2; pts.push([Math.pow(Math.cos(a), 2 / 3), zs2 + (zr - zs2) * Math.pow(Math.sin(a), 2 / 3)]); }
+    return pts.map(([cv, z]) => [cv * (Wb + (Wt - Wb) * clamp((z - zb) / hG, 0, 1)), z]);
+  };
+  const SEC = G.map(gSec), HN = 21, gcols = HN * 2 - 1;
+  const gPt = (i, j) => { const h = j < HN ? j : gcols - 1 - j, [v, z] = SEC[i][h]; return [G[i], j < HN ? v : -v, z]; };
+  out.push(celGrid(G.length, gcols, false, gPt, (i, j) => {
+    const hq = j < HN - 1 ? j : gcols - 2 - j, uc = (G[i] + G[i + 1]) / 2, zc = (SEC[i][hq][1] + SEC[i][hq + 1][1] + SEC[i + 1][hq][1] + SEC[i + 1][hq + 1][1]) / 4;
+    const sideGlass = uc <= 0.8 && uc >= -0.95 + (zc - 0.9) * 0.85;
+    if (hq === 0) return M.paint;
+    if (hq === 1) return sideGlass ? M.trim : M.paint;
+    if (hq <= 9) return uc >= -0.45 && uc <= -0.4 && sideGlass ? M.trim : sideGlass ? M.glass : M.paint;
+    if (hq <= 11) return M.paint;
+    if (uc > 0.1) return M.glass;
+    if (uc > 0.07) return M.trim;
+    if (uc >= -0.92) return M.paint;
+    if (uc >= -0.95) return M.trim;
+    return hq >= 13 ? M.glass : M.paint;
+  }));
+  // Patches on the panels: both sides, the nose, the tail and the top
+  const sideP = (u0, u1, z0, z1, mat, s, off = 0.0025) => celPatch((a, b) => C.side(u0 + (u1 - u0) * a, z0 + (z1 - z0) * b, s), Math.max(1, Math.ceil((u1 - u0) / 0.04)), Math.max(1, Math.ceil((z1 - z0) / 0.04)), off, mat);
+  const endP = (v0, v1, z0, z1, mat, nose) => celPatch((a, b) => C.around(v0 + (v1 - v0) * a, z0 + (z1 - z0) * b, nose), Math.max(2, Math.ceil(Math.abs(v1 - v0) / 0.03)), Math.max(1, Math.ceil((z1 - z0) / 0.03)), 0.003, mat);
+  const topP = (u0, u1, v0, v1, mat) => celPatch((a, b) => C.top(u0 + (u1 - u0) * a, v0 + (v1 - v0) * b), Math.max(1, Math.ceil((u1 - u0) / 0.05)), Math.max(1, Math.ceil((v1 - v0) / 0.05)), 0.0025, mat);
+  for (const s of [-1, 1]) {
+    out.push(sideP(-0.86, 0.86, 0.48, 0.53, M.trim, s, 0.004));                                 // the side molding
+    out.push(sideP(0.858, 0.866, 0.26, 0.85, M.seam, s), sideP(-0.426, -0.418, 0.26, 0.85, M.seam, s));   // door shut lines
+    out.push(sideP(-0.38, -0.27, 0.77, 0.795, M.trim, s, 0.004));                               // door handle
+
+    out.push(endP(s * 0.5, s * 0.9, 0.45, 0.53, M.amber, true));                               // parking and turn lamps round the corners
+    out.push(endP(s * 0.42, s * 0.98, 0.66, 0.84, M.red, false), endP(s * 0.3, s * 0.42, 0.66, 0.84, M.clear, false));   // tail and reversing lamps, wrapping round
+    out.push(topP(1.05, 2.04, s * 0.762, s * 0.77, M.seam), topP(-2.08, -1.53, s * 0.745, s * 0.752, M.seam));   // hood and trunk shut lines
+  }
+  out.push(endP(-0.46, 0.46, 0.3, 0.38, M.trim, true), endP(-0.3, 0.3, 0.47, 0.51, M.trim, true), endP(-0.8, 0.8, 0.557, 0.563, M.seam, true));   // intake, slot, bumper line
+  out.push(endP(-0.3, 0.3, 0.68, 0.82, M.dred, false), endP(-0.16, 0.16, 0.3, 0.43, M.plate, false), endP(-0.8, 0.8, 0.505, 0.512, M.seam, false));   // tail panel, plate, bumper line
+  out.push(topP(0.955, 1.05, -0.74, 0.74, M.trim), topP(-1.53, -1.522, -0.74, 0.74, M.seam));     // the cowl, the trunk's front edge
+  // Boxes: the raised pop-ups (painted covers on black housings), mirrors, wheel-well liners, the tailpipe
+  for (const s of [-1, 1]) {
+    out.push(celRound(1.74, 1.952, ...(s > 0 ? [0.42, 0.79] : [-0.79, -0.42]), 0.58, 0.765, M.paint, M.trim, 0.025));   // a raised pop-up, black round its lamps
+    out.push(celRound(0.62, 0.74, ...(s > 0 ? [0.77, 0.91] : [-0.91, -0.77]), 0.9, 0.97, M.trim, M.trim, 0.03));           // a mirror
+    for (const a of C.axles) out.push(...celBox(a - 0.36, a + 0.36, ...(s > 0 ? [0.595, 0.615] : [-0.615, -0.595]), 0.24, 0.69, {top: M.liner, side: M.liner, front: M.liner, back: M.liner}));
+  }
+  out.push(...celBox(-2.27, -2.12, -0.61, -0.53, 0.235, 0.285, {top: M.chrome, side: M.chrome, front: M.chrome, back: M.liner}));
+  // The lenses, one box per lamp, in the order of CARS.celica.shape's 'pl' parts (so a smashed one matches the damage plan)
+  const lenses = CARS.celica.shape.parts.map((q, i) => [q, i]).filter(([q]) => q[0] === 'pl').map(([q, i]) => {
+    const inner = Math.min(Math.abs(q[3]), Math.abs(q[4])) < 0.5, [a, b] = inner ? [0.435, 0.6] : [0.61, 0.775], sg = q[3] > 0 ? 1 : -1;
+    return {i, boxes: celBox(1.945, 1.958, sg > 0 ? a : -b, sg > 0 ? b : -a, 0.6, 0.745, {top: M.trim, side: M.trim, front: M.lens, back: M.trim}, 6e-5)}; });
+  // A wheel: the tire's profile turned round its axle (radius as a share of the tire's, offset outward), then the cover
+  const prof = [[0.6, -0.095], [0.9, -0.095], [0.97, -0.083], [1, -0.06], [1, 0.06], [0.97, 0.083], [0.9, 0.095], [0.62, 0.095], [0.62, 0.097], [0.5, 0.104], [0.35, 0.111], [0.18, 0.115], [0, 0.116]];
+  const profN = prof.map((q, k) => { const a = prof[Math.max(0, k - 1)], b = prof[Math.min(prof.length - 1, k + 1)], nr = b[1] - a[1], nw = -(b[0] - a[0]), l = Math.hypot(nr, nw) || 1; return [nr / l, nw / l]; });   // square to the profile
+  CEL_MESH = {grids: out, lenses, prof, profN, profMat: prof.map((p, k) => k < 7 ? M.tire : M.cover)};
+  return CEL_MESH;
+}
+// Damage on a career car: the plan's patches as colored patches over the panels (cached per plan)
+const CEL_DMG = new Map();
+function celDamage(plan) {
+  let g = CEL_DMG.get(plan.key);
+  if (!g) {
+    g = plan.patches.map((p, k) => { const s = p.v0 + p.v1 > 0 ? 1 : -1, z0 = Math.max(0.26, p.z0), z1 = Math.min(0.84, Math.max(z0 + 0.02, p.z1));
+      return {mat: 17 + k, col: glsCol(p.look[0]), g: celPatch((a, b) => CEL.side(p.u0 + (p.u1 - p.u0) * a, z0 + (z1 - z0) * b, s), Math.max(1, Math.ceil((p.u1 - p.u0) / 0.05)), Math.max(1, Math.ceil((z1 - z0) / 0.05)), 0.005, 17 + k)}; });
+    if (CEL_DMG.size > 20) CEL_DMG.clear();
+    CEL_DMG.set(plan.key, g);
+  }
+  return g;
+}
+// Draw it: called in place of the box model while a WebGL frame is recorded (GLC.rec)
+// The smooth Celica on the graphics chip: its mesh (CEL_MESH, in the car's own frame) is uploaded once, with a normal and
+// a material number at every vertex; a frame only records where each Celica is (CELG.list: its rigid frame, wheels,
+// colors), and glsRender draws them inside its slices with their own shader, which places every vertex through the frame
+// and lights every pixel: sun and sky, a highlight, and the sky and ground reflected in the paint and glass (more at
+// grazing angles). The wheels are one lathed tire and cover, drawn four times, spun and steered in the shader.
+const CELG = {ok: null, prog: null, loc: null, body: null, nBody: 0, wheel: null, nWheel: 0, dmg: new Map(), list: []};
+const CEL_LENS0 = 28;   // material numbers 28-31: the four pop-up lenses (each can be smashed on its own)
+function celgInit() {
+  if (CELG.ok !== null) return CELG.ok;
+  const gl = GLT.gl;
+  try {
+    const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+    const hp = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision > 0 ? 'highp' : 'mediump';
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, `
+      attribute vec3 aP; attribute vec3 aN; attribute float aM;
+      uniform vec3 uCam; uniform vec2 uCS; uniform float uF; uniform vec2 uCtr; uniform vec2 uSize;
+      uniform vec3 uO; uniform vec3 uFx; uniform vec3 uRx; uniform vec3 uUx; uniform float uPt;
+      uniform float uWheel; uniform vec4 uW; uniform float uSide; uniform float uTr; uniform float uWdz;
+      uniform vec4 uMc[32]; uniform vec4 uMp[32];
+      varying vec3 vN; varying vec3 vP; varying vec4 vMc; varying vec4 vMp;
+      void main() {
+        vec3 p = aP, n = aN; float pt = uPt;
+        if (uWheel > 0.5) {
+          // a unit tire: (cos a x radius, outward, sin a x radius); spun, mirrored to its side, steered, set on its axle
+          float cs = cos(uW.z), sn = sin(uW.z), c2 = cos(uW.w), s2 = sin(uW.w);
+          vec3 q = vec3((p.x * cs - p.z * sn) * uTr, p.y * uSide, (p.x * sn + p.z * cs) * uTr);
+          vec3 m = vec3(n.x * cs - n.z * sn, n.y * uSide, n.x * sn + n.z * cs);
+          p = vec3(uW.x + q.x * c2 - q.y * s2, uW.y + q.x * s2 + q.y * c2, uTr + q.z);
+          n = vec3(m.x * c2 - m.y * s2, m.x * s2 + m.y * c2, m.z);
+          pt = 0.0;
+        }
+        float U = p.x - p.z * pt, Z = p.z + p.x * pt;
+        vec3 w = uO + uFx * U + uRx * p.y + uUx * Z;
+        w.z += uWheel * uWdz;
+        vN = uFx * n.x + uRx * n.y + uUx * n.z; vP = w;
+        int mi = int(aM + 0.5); vMc = uMc[mi]; vMp = uMp[mi];
+        float dx = w.x - uCam.x, dy = w.y - uCam.y;
+        float f = dx * uCS.x + dy * uCS.y, r = dy * uCS.x - dx * uCS.y, u = w.z - uCam.z;
+        float near = 0.5, far = 2000.0;   // (the same camera and depth as the ground and the scenery)
+        gl_Position = vec4((2.0 * uCtr.x / uSize.x - 1.0) * f + 2.0 * uF * r / uSize.x,
+                           (1.0 - 2.0 * uCtr.y / uSize.y) * f + 2.0 * uF * u / uSize.y,
+                           (f * (far + near) - 2.0 * far * near) / (far - near), f);
+      }`));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `
+      precision ${hp} float;
+      varying vec3 vN; varying vec3 vP; varying vec4 vMc; varying vec4 vMp;
+      uniform vec3 uCam; uniform vec3 uSun; uniform vec3 uNight; uniform float uAlpha;
+      void main() {
+        vec3 N = normalize(vN), V = normalize(uCam - vP);
+        float nv = dot(N, V);
+        if (nv < 0.0) { N = -N; nv = -nv; }
+        float dif = max(0.0, dot(N, uSun));
+        float sp = pow(max(0.0, dot(N, normalize(uSun + V))), vMp.w);
+        float g = 1.0 - nv; g = g * g * g;
+        vec3 R = reflect(-V, N);
+        vec3 env = R.z > 0.0 ? mix(vec3(0.816, 0.847, 0.878), vec3(0.463, 0.62, 0.831), clamp(R.z * 1.6, 0.0, 1.0)) : vec3(0.275, 0.282, 0.251);
+        float shd = vMc.w + (1.0 - vMc.w) * (0.46 + 0.16 * N.z + 0.52 * dif);
+        float rf = min(0.95, vMp.x + vMp.y * g);
+        vec3 c = vMc.rgb * shd * (1.0 - rf) + env * rf + vMp.z * sp;
+        if (vMc.w < 0.7) c *= uNight;
+        gl_FragColor = vec4(c * uAlpha, uAlpha);
+      }`));
+    gl.bindAttribLocation(prog, 0, 'aP'); gl.bindAttribLocation(prog, 1, 'aN'); gl.bindAttribLocation(prog, 2, 'aM');
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    const U = k => gl.getUniformLocation(prog, k);
+    CELG.loc = {};
+    for (const k of ['uCam', 'uCS', 'uF', 'uCtr', 'uSize', 'uO', 'uFx', 'uRx', 'uUx', 'uPt', 'uWheel', 'uW', 'uSide', 'uTr', 'uWdz', 'uMc', 'uMp', 'uSun', 'uNight', 'uAlpha']) CELG.loc[k] = U(k);
+    CELG.prog = prog;
+    // The body: every quad of every grid as two triangles, 7 numbers a vertex (position, normal, material)
+    const mesh = celMesh(), out = [];
+    const quadsOf = (g, matOf) => {
+      const qc = g.wrap ? g.cols : g.cols - 1, P = g.P, N = g.N;
+      const v = k => { out.push(P[k * 3], P[k * 3 + 1], P[k * 3 + 2], N[k * 3], N[k * 3 + 1], N[k * 3 + 2]); };
+      for (let i = 0; i < g.rows - 1; i++) for (let j = 0; j < qc; j++) {
+        const j2 = (j + 1) % g.cols, A = i * g.cols + j, B = (i + 1) * g.cols + j, C = (i + 1) * g.cols + j2, D = i * g.cols + j2, m = matOf(i * qc + j);
+        for (const k of [A, B, C, A, C, D]) { v(k); out.push(m); }
+      }
+    };
+    for (const g of mesh.grids) quadsOf(g, q => g.M[q]);
+    mesh.lenses.forEach((L, k) => { for (const g of L.boxes) quadsOf(g, q => g.M[q] === CEL_MATS.lens ? CEL_LENS0 + k : g.M[q]); });
+    const send = arr => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW); return b; };
+    CELG.body = send(out); CELG.nBody = out.length / 7;
+    // The wheel: the tire's profile and the cover turned round the axle, six dark slots in the cover
+    const w = [], NS = 24, pr = mesh.prof, PN = mesh.profN;
+    const wv = (a, p) => { const an = a / NS * Math.PI * 2, c = Math.cos(an), s = Math.sin(an); w.push(c * pr[p][0], pr[p][1], s * pr[p][0], c * PN[p][0], PN[p][1], s * PN[p][0]); };
+    for (let a = 0; a < NS; a++) for (let p = 0; p < pr.length - 1; p++) {
+      const m = mesh.profMat[p] === CEL_MATS.cover && p === 9 && a % 4 === 0 ? CEL_MATS.slot : mesh.profMat[p];
+      for (const [aa, pp] of [[a, p], [a + 1, p], [a + 1, p + 1], [a, p], [a + 1, p + 1], [a, p + 1]]) { wv(aa, pp); w.push(m); }
+    }
+    CELG.wheel = send(w); CELG.nWheel = w.length / 7;
+    CELG.ok = true;
+  } catch (e) { console.warn('Smooth Celica unavailable:', e.message); CELG.ok = false; }
+  return CELG.ok;
+}
+// A career car's damage patches, as their own small buffer (cached per damage plan)
+function celgDamage(plan) {
+  let d = CELG.dmg.get(plan.key);
+  if (!d) {
+    const gl = GLT.gl, out = [], cols = [];
+    celDamage(plan).forEach(x => {
+      const g = x.g, qc = g.cols - 1;
+      for (let i = 0; i < g.rows - 1; i++) for (let j = 0; j < qc; j++) for (const k of [i * g.cols + j, (i + 1) * g.cols + j, (i + 1) * g.cols + j + 1, i * g.cols + j, (i + 1) * g.cols + j + 1, i * g.cols + j + 1])
+        out.push(g.P[k * 3], g.P[k * 3 + 1], g.P[k * 3 + 2], g.N[k * 3], g.N[k * 3 + 1], g.N[k * 3 + 2], x.mat);
+      cols.push([x.mat, x.col]);
+    });
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(out), gl.STATIC_DRAW);
+    if (CELG.dmg.size > 12) { for (const v of CELG.dmg.values()) gl.deleteBuffer(v.buf); CELG.dmg.clear(); }
+    d = {buf: b, n: out.length / 7, cols};
+    CELG.dmg.set(plan.key, d);
+  }
+  return d;
+}
+// Record this Celica for the frame (called while a WebGL frame is gathered, in place of the box model)
+function drawCelicaSmooth() {
+  const cp = {x: S.x, y: S.y, hx: Math.cos(S.h), hy: Math.sin(S.h)};
+  if (!SHOWCASE) shadowUnder(cp, 2.3, 1.0);
+  const paint = (!SHOWCASE && CFG.body === 'celica' && CFG.paint) || CARS.celica.paint;
+  const R = RIGID || rigidPlane('celica'), tr = CFG.body === 'celica' ? CFG.r : CARS.celica.r;
+  const plan = DRAW_PLAYER && !SHOWCASE && CAREER_CAR && CAREER_CAR.body < 85 ? damagePlan(CARS.celica, CAREER_CAR.uid, CAREER_CAR.body, paint) : null;
+  // The material table: base color and how much of it is lit regardless of the sun, then reflection at a glance and at
+  // grazing angles, the highlight's strength and its tightness
+  const mc = new Float32Array(128), mp = new Float32Array(128);
+  const set = (i, M) => { mc.set([M.c[0] / 255, M.c[1] / 255, M.c[2] / 255, M.em], i * 4); mp.set([M.rb, M.rg, M.ks, M.sh], i * 4); };
+  const pc = glsCol(paint);
+  CEL_FIXED.forEach((M, i) => { if (M) set(i, M); });
+  set(0, {c: pc, em: 0, rb: 0.07, rg: 0.5, ks: 0.55, sh: 60});
+  set(4, {c: pc.map(x => x * 0.42), em: 0, rb: 0.02, rg: 0.1, ks: 0.05, sh: 10});
+  const mesh = celMesh();
+  mesh.lenses.forEach((L, k) => { const md = plan && plan.mods.get(L.i); set(CEL_LENS0 + k, CEL_FIXED[md && md.broken ? CEL_MATS.lensx : CEL_MATS.lens]); });
+  const dmg = plan ? celgDamage(plan) : null;
+  if (dmg) for (const [i, c] of dmg.cols) set(i, {c, em: 0, rb: 0.03, rg: 0.25, ks: 0.15, sh: 20});
+  const steer = DRAW_PLAYER ? S.steer || 0 : 0, spin = DRAW_PLAYER ? (S.odo || 0) / tr : 0, wheels = [];
+  for (const ua of CEL.axles) for (const s of [-1, 1]) {
+    const vc = s * CEL.track;
+    wheels.push([ua, vc, spin, ua > 0 ? steer : 0, s, wheelDz(R, ua - tr, ua + tr, vc - 0.1, vc + 0.1)]);
+  }
+  const night = NIGHT_K !== null ? [0.34 + NIGHT_K * 0.142, 0.34 + NIGHT_K * 0.13, 0.39 + NIGHT_K * 0.118] : [1, 1, 1];
+  CELG.list.push({d: Math.hypot(GLC.cx - CAMX, GLC.cy - CAMY), o: [R.ox, R.oy, R.oz + LIFT], f: [R.fx, R.fy, R.fz], r: [R.rx, R.ry, R.rz], u: [R.ux, R.uy, R.uz],
+    pt: BODY_PITCH, tr, mc, mp, wheels, night, alpha: ctx.globalAlpha, dmg});
+}
+// Draw the recorded Celicas whose distance falls in this slice (from glsRender's slice, between its own draws)
+function celgDraw(near, far, cam) {
+  const list = CELG.list.filter(c => c.d >= near && c.d < far);
+  if (!list.length) return;
+  const gl = GLT.gl, L = CELG.loc;
+  gl.useProgram(CELG.prog);
+  gl.uniform3f(L.uCam, CAMX, CAMY, CAMZ); gl.uniform2f(L.uCS, cam.c, cam.s); gl.uniform1f(L.uF, F); gl.uniform2f(L.uCtr, cam.cx, cam.cy); gl.uniform2f(L.uSize, cam.w, cam.h);
+  gl.uniform3f(L.uSun, Math.cos(SUN_AZ) * 0.68, Math.sin(SUN_AZ) * 0.68, 0.73);
+  const attr = () => { gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 28, 12); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 24); };
+  gl.enableVertexAttribArray(0); gl.enableVertexAttribArray(1); gl.enableVertexAttribArray(2);
+  for (const c of list) {
+    gl.uniform3fv(L.uO, c.o); gl.uniform3fv(L.uFx, c.f); gl.uniform3fv(L.uRx, c.r); gl.uniform3fv(L.uUx, c.u); gl.uniform1f(L.uPt, c.pt);
+    gl.uniform4fv(L.uMc, c.mc); gl.uniform4fv(L.uMp, c.mp); gl.uniform3fv(L.uNight, c.night); gl.uniform1f(L.uAlpha, c.alpha); gl.uniform1f(L.uTr, c.tr);
+    gl.uniform1f(L.uWheel, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, CELG.body); attr(); gl.drawArrays(gl.TRIANGLES, 0, CELG.nBody);
+    if (c.dmg) { gl.bindBuffer(gl.ARRAY_BUFFER, c.dmg.buf); attr(); gl.drawArrays(gl.TRIANGLES, 0, c.dmg.n); }
+    gl.uniform1f(L.uWheel, 1);
+    gl.bindBuffer(gl.ARRAY_BUFFER, CELG.wheel); attr();
+    for (const w of c.wheels) { gl.uniform4f(L.uW, w[0], w[1], w[2], w[3]); gl.uniform1f(L.uSide, w[4]); gl.uniform1f(L.uWdz, w[5]); gl.drawArrays(gl.TRIANGLES, 0, CELG.nWheel); }
+  }
+  gl.useProgram(GLS.prog);   // (back to the scenery's program; its draws set their own attribute pointers)
 }
 
 /* ---------- the WebGL scenery ---------- */
@@ -8235,6 +8623,7 @@ function glsRender(items, dt) {
   const attribs = () => { gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, 28, 0); gl.vertexAttribPointer(L.col, 4, gl.UNSIGNED_BYTE, true, 28, 12); gl.vertexAttribPointer(L.c, 3, gl.FLOAT, false, 28, 16); };
   gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
   gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  const CELG_CAM = {c, s, cx: P + VW / 2, cy: P + HOR, w: Wc, h: Hc};
   const slice = (near, far) => {
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform2f(L.slice, near, far);
@@ -8246,6 +8635,7 @@ function glsRender(items, dt) {
     }
     if (GLS.dynN) { gl.bindBuffer(gl.ARRAY_BUFFER, GLS.dyn); attribs(); gl.drawArrays(gl.TRIANGLES, 0, GLS.dynN); }
     if (GLC.n) { gl.bindBuffer(gl.ARRAY_BUFFER, GLC.vbo); attribs(); gl.drawArrays(gl.TRIANGLES, 0, GLC.n); }
+    if (CELG.list.length) celgDraw(near, far, CELG_CAM);   // the smooth Celicas, with their own shader
     gl.depthMask(false);   // the see-through faces (the catch fence, the seat rows) after the solid ones
     for (const ch of vis) for (const p of ch.parts) {
       if (!p.nT) continue;
