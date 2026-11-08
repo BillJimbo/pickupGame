@@ -4992,6 +4992,24 @@ function showcaseCam(dt = 0) {
 }
 // Draw a model at a set position without moving the real truck
 function drawPosed(fn, x, y, h) { const sx = S.x, sy = S.y, sh = S.h; S.x = x; S.y = y; S.h = h; fn(); S.x = sx; S.y = sy; S.h = sh; }
+// Is this a place a trackside camera may stand: off the road and not inside a building, house or tree?
+function camSpotFree(x, y) {
+  if (distToRoad(x, y) <= CFG.RW + 1) return false;
+  if (MAP_KIND === 'city') {
+    for (const b of CITY.buildings) if (Math.abs(x - b.x) < b.w / 2 + 2 && Math.abs(y - b.y) < b.d / 2 + 2) return false;
+    if (Math.hypot(x - CITY.shop.x, y - CITY.shop.y) < 24) return false;
+  } else if (MAP_KIND === 'suburb') {
+    for (const h of SUBURB.houses) if (Math.hypot(x - h.x, y - h.y) < 11) return false;
+    if (Math.hypot(x - SUBURB.shop.x, y - SUBURB.shop.y) < 22) return false;
+  } else if (isNightMap() && NIGHT) {
+    for (const b of NIGHT.buildings) {   // each block is a box: w along its heading, d across it
+      const dx = x - b.x, dy = y - b.y;
+      if (Math.abs(dx * b.hx + dy * b.hy) < b.w / 2 + 2 && Math.abs(-dx * b.hy + dy * b.hx) < b.d / 2 + 2) return false;
+    }
+  }
+  if (S.city) for (const t of S.city) if (t.cx !== undefined && Math.hypot(x - t.cx, y - t.cy) < 3) return false;   // (trees)
+  return true;
+}
 const CAM_TILT = 1.4;   // how much more the view pitches than the slope itself: a hill is felt, not just seen
 function setCam(dt = 0) {
   F = VH * 0.9;
@@ -5019,10 +5037,11 @@ function setCam(dt = 0) {
       for (let i = 0; i < n; i++) { hh += clamp(turn * D / n, -0.11, 0.11); px += Math.cos(hh) * D / n; py += Math.sin(hh) * D / n; }
       const sd0 = Math.random() < 0.5 ? 1 : -1;
       let cx = px, cy = py;
-      for (let i = 0; i < 12; i++) {   // beside its path, beyond the road's edge, a little nearer or farther along
-        const lat = 7 + (i >> 1) * 3 + Math.random() * 4, side = (i & 1 ? -1 : 1) * sd0, al = (Math.random() - 0.5) * 16;
+      let found = false;
+      for (let i = 0; i < 20 && !found; i++) {   // beside its path, beyond the road's edge, a little nearer or farther along; in a town the sidewalk's curb is tried last, since the buildings begin just past it
+        const curb = i >= 12, lat = curb ? CFG.RW + 1.6 + Math.random() * 1.2 : 7 + (i >> 1) * 3 + Math.random() * 4, side = (i & 1 ? -1 : 1) * sd0, al = (Math.random() - 0.5) * (curb ? 30 : 16);
         cx = px - Math.sin(hh) * side * lat + Math.cos(hh) * al; cy = py + Math.cos(hh) * side * lat + Math.sin(hh) * al;
-        if (distToRoad(cx, cy) > CFG.RW + 2.5) break;
+        found = camSpotFree(cx, cy);
       }
       cs.x = cx; cs.y = cy; cs.tz = 1.2 + Math.random() * 1.4; cs.z = elev(cx, cy) + cs.tz; cs.yaw = Math.atan2(S.y - cy, S.x - cx); cs.snap = true;
     }
