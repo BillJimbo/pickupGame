@@ -2165,6 +2165,7 @@ CARS.celica.shape = {track: 0.73, tw: 0.095, axles: [-1.26, 1.26], hub: '#a9aaa6
   full('p', -2.19, -2.1, 0.8, 0.22, 0.5),                                                                // rear bumper
   sym('tl', -2.14, -2.02, 0.33, 0.855, 0.66, 0.86), full('tr', -2.13, -2.1, 0.33, 0.68, 0.84),          // tail lamps and the panel between
   full('w', -2.2, -2.19, 0.16, 0.28, 0.42), [['c', -2.25, -2.17, -0.6, -0.52, 0.24, 0.29]],              // plate and tailpipe
+  full('s', -2.09, -1.86, 0.7, 0.995, 1.035), sym('s', -2.03, -1.92, 0.5, 0.58, 0.93, 1.0),              // the rear spoiler on its stands
   // the side molding and door handles (drawn after the body, on the side facing you), mirrors, wheel covers
   sym('ks', -0.88, 0.88, 0.85, 0.858, 0.48, 0.53), sym('ks', -0.42, -0.3, 0.85, 0.856, 0.76, 0.79),
   sym('k', 0.62, 0.78, 0.85, 0.98, 0.9, 1.0),
@@ -8119,6 +8120,10 @@ function celMesh() {
     for (const a of C.axles) out.push(...celBox(a - 0.36, a + 0.36, ...(s > 0 ? [0.595, 0.615] : [-0.615, -0.595]), 0.24, 0.69, {top: M.liner, side: M.liner, front: M.liner, back: M.liner}));
   }
   out.push(...celBox(-2.27, -2.12, -0.61, -0.53, 0.235, 0.285, {top: M.chrome, side: M.chrome, front: M.chrome, back: M.liner}));
+  // The rear spoiler: a body-color wing on two stands across the trunk lid, a high-mounted brake lamp in its back edge
+  out.push(celRound(-2.09, -1.86, -0.7, 0.7, 0.995, 1.035, M.paint, M.paint, 0.016));
+  for (const s of [-1, 1]) out.push(celRound(-2.03, -1.92, ...(s > 0 ? [0.5, 0.58] : [-0.58, -0.5]), 0.9, 1.005, M.paint, M.paint, 0.02));
+  out.push(...celBox(-2.094, -2.082, -0.2, 0.2, 1.004, 1.026, {top: M.red, side: M.red, front: M.red, back: M.red}));
   // The lenses, one box per lamp, in the order of CARS.celica.shape's 'pl' parts (so a smashed one matches the damage plan)
   const lenses = CARS.celica.shape.parts.map((q, i) => [q, i]).filter(([q]) => q[0] === 'pl').map(([q, i]) => {
     const inner = Math.min(Math.abs(q[3]), Math.abs(q[4])) < 0.5, [a, b] = inner ? [0.435, 0.6] : [0.61, 0.775], sg = q[3] > 0 ? 1 : -1;
