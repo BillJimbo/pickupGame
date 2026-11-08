@@ -5046,9 +5046,9 @@ function setCam(dt = 0) {
     const cs = camS, ch = Math.cos(S.h), sh = Math.sin(S.h), mv = S.v >= -0.5 ? 1 : -1;
     const ahead = ((cs.x - S.x) * ch + (cs.y - S.y) * sh) * mv, far = Math.hypot(cs.x - S.x, cs.y - S.y);
     cs.t += dt;
-    if (cs.fresh || (ahead < (cs.close ? -8 : -14) && cs.t > 1) || far > 150 || (Math.abs(S.v) < 2 && cs.t > 8)) {
+    if (cs.fresh || (ahead < -(cs.stay || 14) && cs.t > 1) || far > 150 || (Math.abs(S.v) < 2 && cs.t > 8)) {
       cs.fresh = false; cs.t = 0;
-      cs.close = Math.random() < 0.4;   // an aggressive shot: low, wide and right at the curb, so the car whips past
+      cs.close = Math.random() < 0.4; cs.stay = cs.close ? 30 + Math.random() * 30 : 55 + Math.random() * 45;   // how far past the camera the car gets before the cut: it is followed away   // an aggressive shot: low, wide and right at the curb, so the car whips past
       const sp = Math.max(Math.abs(S.v), 3), D = cs.close ? clamp(sp * (1.2 + Math.random() * 0.9), 16, 60) : clamp(sp * (2.4 + Math.random() * 1.4), 28, 110);
       // Where the car will be in a few seconds: follow its heading and yaw rate along an arc (not past a turn and a half)
       const turn = clamp((S.r || 0) * (mv < 0 ? -1 : 1), -0.6, 0.6) / sp, n = 14, sd0 = Math.random() < 0.5 ? 1 : -1;
