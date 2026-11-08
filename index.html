@@ -2988,10 +2988,10 @@ function updateAudio() {
     // The EV1: a rising electric whine from the motor and reduction gears, louder under load, and a faint hum ready
     // Pitch follows the motor up to the stock governor; past it (overclocked) it only creeps higher, so it never shrieks
     const mr = Math.min(rpm, CFG.redZone) + 0.25 * Math.max(0, rpm - CFG.redZone);
-    AU.imaO.frequency.setTargetAtTime(Math.max(50, 50 + mr / 60 * 5), t, 0.03);
+    AU.imaO.frequency.setTargetAtTime(Math.max(50, 50 + mr / 60 * 5) * DOP, t, 0.03);
     AU.imaG.gain.setTargetAtTime(S.engineOn ? 0.006 + 0.03 * Math.min(1, Math.abs(S.ima || 0)) * clamp(rpm / 1500, 0.2, 1) : 0, t, 0.05);
   } else {
-    AU.imaO.frequency.setTargetAtTime(CFG.rearAssist ? 140 + Math.abs(S.v) * 48 : Math.max(80, rpm / 60 * 18), t, 0.03);   // (Greta's rear motor whines with road speed)
+    AU.imaO.frequency.setTargetAtTime((CFG.rearAssist ? 140 + Math.abs(S.v) * 48 : Math.max(80, rpm / 60 * 18)) * DOP, t, 0.03);   // (Greta's rear motor whines with road speed)
     AU.imaG.gain.setTargetAtTime(0.03 * Math.min(1, Math.abs(S.ima || 0)), t, 0.05);
   }
   AU.nbp.frequency.setTargetAtTime((P.nbp[0] + rpm * P.nbp[1]) * (1 + 0.6 * vt), t, 0.03);
