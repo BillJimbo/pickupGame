@@ -8668,9 +8668,11 @@ function shiftOffset(sx, sy) {
   const [nx, ny] = slots['0'];   // measured from this car's own neutral
   return [(gx - nx) / 35 * sx, (gy - ny) / 30 * sy * half];
 }
+// Steering wheel turn per radian of road-wheel angle: a real car's ~14:1 ratio, so full lock (0.5 rad) is about 400 degrees each way
+const STEER_RATIO = 14;
 // Steering wheel: rim, spokes at the given angles, and a center pad; turned by the steering input
 function wheel(cx, cy, r, rimW, spokes, spokeW, padR, rimCol, padCol) {
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(S.steer * 2.2);
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(S.steer * STEER_RATIO);
   ctx.strokeStyle = rimCol; ctx.lineCap = 'round';
   ctx.lineWidth = spokeW;
   for (const a of spokes) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); ctx.stroke(); }
@@ -9077,7 +9079,7 @@ function drawPickupInterior3D() {
     ctx.fillStyle = '#3a352e'; ctx.beginPath(); ctx.arc(knob.x - 0.009 * knob.k, knob.y - 0.009 * knob.k, 0.009 * knob.k, 0, Math.PI * 2); ctx.fill();
   }
   // The steering wheel: a thin rim and four spokes in a plane tilted back toward the driver, turned by the steering
-  const C = {u: 1.28, v: -0.38, z: 1.17}, R = 0.2, tilt = 0.45, rot = -S.steer * 2.2;
+  const C = {u: 1.28, v: -0.38, z: 1.17}, R = 0.2, tilt = 0.45, rot = -S.steer * STEER_RATIO;
   const rimPt = a => { const x = Math.cos(a + rot), y = Math.sin(a + rot);   // x across the wheel, y up its face
     return cabPoint(E, H0, C.u - y * R * Math.sin(tilt), C.v + x * R, C.z + y * R * Math.cos(tilt)); };
   const col = cabPoint(E, H0, 1.42, -0.38, 1.12), hub = cabPoint(E, H0, C.u, C.v, C.z);
@@ -9218,7 +9220,7 @@ function drawCab3D() {
   }
   // The wheel: three spokes on the sporty ones, four on the rest
   // Set low enough that its rim passes under the dials rather than across them
-  const C = {u: E.u + 0.5, v: driverV, z: G.eye.z - 0.45}, R = ix.wheel === 3 ? 0.175 : 0.185, tilt = 0.38, rot = -S.steer * 2.2;
+  const C = {u: E.u + 0.5, v: driverV, z: G.eye.z - 0.45}, R = ix.wheel === 3 ? 0.175 : 0.185, tilt = 0.38, rot = -S.steer * STEER_RATIO;
   const rimPt = a => { const x = Math.cos(a + rot), y = Math.sin(a + rot); return cabPoint(E, H0, C.u - y * R * Math.sin(tilt), C.v + x * R, C.z + y * R * Math.cos(tilt)); };
   const hub = cabPoint(E, H0, C.u, C.v, C.z), colm = cabPoint(E, H0, C.u + 0.16, C.v, C.z - 0.08);
   ctx.strokeStyle = '#141416'; ctx.lineCap = 'round';
