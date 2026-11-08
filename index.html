@@ -2138,12 +2138,40 @@ CARS.pickup.shape = {track: 0.7, tw: 0.11, axles: [-1.45, 1.35], parts: parts(
   sym('k', -2.3, -0.4, 0.73, 0.84, 1.06, 1.08), sym('tl', -2.33, -2.29, 0.6, 0.83, 0.7, 0.98),           // rail caps, tail lamps
   full('c', -2.42, -2.28, 0.84, 0.38, 0.52),                                                             // rear bumper
   sym('c', 1.18, 1.52, 0.81, 0.83, 0.17, 0.49), sym('c', -1.62, -1.28, 0.81, 0.83, 0.17, 0.49))};        // chrome hub caps
-// The Celica's side view for its garage card and Bill's lift, in the roster cars' box style: the same boxes as its
-// hand-built 3D model (drawCelicaModelRaw), which stays as it is. Only sideSvg and rigCar read sideShape.
-CARS.celica.sideShape = {paint: '#2f6b6e', track: 0.82, tw: 0.11, axles: [-1.2, 1.2], parts: parts(
-  full('p', -2.2, 1.4, 0.9, 0.32, 0.95), full('p', 1.4, 1.8, 0.9, 0.32, 0.88), full('p', 1.8, 2.1, 0.88, 0.32, 0.8), full('p', 2.1, 2.25, 0.8, 0.32, 0.72),
-  full('k', 2.2, 2.28, 0.84, 0.25, 0.4), sym('k', -2.12, -1.88, 0.6, 0.7, 0.9, 0.98), full('s', -2.3, -1.8, 0.95, 0.98, 1.03),
-  full('g', -0.8, 1.0, 0.82, 0.95, 1.25), full('r', -0.8, 1.0, 0.84, 1.25, 1.32), sym('pu', 1.12, 1.38, 0.45, 0.8, 0.95, 1.12))};
+// The 1991 Celica ST coupe from outside (the fifth-generation T180 notchback, not the liftback), at its real size:
+// 4.42 m long, 1.70 m wide, 1.30 m high, axles 2.52 m apart, 185/70R13 tires on a 1.46 m track. A low wedge nose
+// with the pop-up headlamps raised (body-color covers on black housings, two lamps in each), parking lamps wrapping
+// round the corners of the body-color bumper, a slim slot and a lower intake; a hood rising in steps to a black cowl,
+// a steeply raked windshield, frameless door glass, body-color C-pillars (sail panels) beside a sloping rear window,
+// a separate trunk with a high deck, wraparound tail lamps joined by a dark red panel, the plate on the rear bumper
+// and a single tailpipe. The wheel arches are left open over the tires, which wear the ST's silver wheel covers.
+// The sail panels are kind 'r' so they draw after the glass beside them (as the roof does).
+CARS.celica.paint = '#2f6b6e';
+CARS.celica.shape = {track: 0.73, tw: 0.095, axles: [-1.26, 1.26], hub: '#c9c9c4', parts: parts(
+  // the bumper and nose, each split into a middle and two corners for the depth sort
+  nose(2.12, 2.22, 0.8, 0.22, 0.48, 0.42), full('k', 2.22, 2.235, 0.46, 0.26, 0.37),                    // bumper and its lower intake
+  nose(1.62, 2.12, 0.85, 0.22, 0.62, 0.42), full('k', 2.12, 2.15, 0.34, 0.5, 0.56),                     // nose and the slot between the lamps
+  sym('am', 2.06, 2.2, 0.56, 0.845, 0.49, 0.56),                                                         // parking and turn lamps round the corners
+  // the hood over the front wheels, rising in steps to the cowl, with the arch left open below for the tire
+  full('p', 1.36, 1.62, 0.85, 0.42, 0.67), full('p', 1.12, 1.36, 0.85, 0.42, 0.73), full('p', 0.9, 1.12, 0.85, 0.42, 0.79),
+  full('k', 0.9, 1.0, 0.78, 0.79, 0.84),                                                                 // the black cowl panel
+  // the pop-ups, raised
+  sym('pp', 1.72, 1.98, 0.36, 0.8, 0.6, 0.78), sym('pl', 1.98, 2.0, 0.38, 0.57, 0.63, 0.76), sym('pl', 1.98, 2.0, 0.59, 0.78, 0.63, 0.76),
+  // doors and sills, the rear quarters over the back wheels, the trunk and the tail
+  full('p', -0.9, 0.9, 0.85, 0.22, 0.86), full('p', -1.62, -0.9, 0.85, 0.42, 0.88),
+  full('p', -2.1, -1.62, 0.85, 0.22, 0.93), full('p', -1.62, -1.5, 0.85, 0.42, 0.93),
+  full('p', -2.19, -2.1, 0.8, 0.22, 0.5),                                                                // rear bumper
+  sym('tl', -2.14, -2.02, 0.33, 0.855, 0.66, 0.86), full('tr', -2.13, -2.1, 0.33, 0.68, 0.84),          // tail lamps and the panel between
+  full('w', -2.2, -2.19, 0.16, 0.28, 0.42), [['c', -2.25, -2.17, -0.6, -0.52, 0.24, 0.29]],              // plate and tailpipe
+  // the side molding and door handles (drawn after the body, on the side facing you), mirrors, wheel covers
+  sym('ks', -0.88, 0.88, 0.85, 0.858, 0.48, 0.53), sym('ks', -0.42, -0.3, 0.85, 0.856, 0.76, 0.79),
+  sym('k', 0.62, 0.78, 0.85, 0.98, 0.9, 1.0),
+  sym('c', 1.1, 1.42, 0.825, 0.835, 0.15, 0.47), sym('c', -1.42, -1.1, 0.825, 0.835, 0.15, 0.47),
+  // the greenhouse: the windshield raked in steps, the side glass, the roof, then the rear window between the sail panels
+  full('g', -0.95, 0.9, 0.78, 0.86, 1.0), full('g', -0.95, 0.58, 0.76, 1.0, 1.14), full('g', -0.95, 0.28, 0.73, 1.14, 1.235),
+  full('r', -0.95, 0.04, 0.7, 1.235, 1.295),
+  full('g', -1.15, -0.95, 0.62, 0.86, 1.235), full('g', -1.35, -1.15, 0.6, 0.86, 1.12), full('g', -1.52, -1.35, 0.58, 0.9, 1.0),
+  sym('r', -1.15, -0.95, 0.62, 0.74, 0.86, 1.235), sym('r', -1.35, -1.15, 0.6, 0.77, 0.86, 1.12), sym('r', -1.52, -1.35, 0.58, 0.8, 0.88, 1.0))};
 // The Ram's side view, the same way: the boxes of its hand-built 3D model (drawRamModelRaw), with the duals at the back
 CARS.ram.sideShape = {paint: '#9e1b1f', track: 0.86, tw: 0.15, axles: [-1.9, 2.15], parts: parts(
   full('p', -3.2, 3.2, 1.0, 0.55, 1.1), sym('p', -2.7, -1.1, 1.0, 1.34, 0.6, 1.12),            // body and the dually flares
@@ -2171,9 +2199,11 @@ CARS.buggy.specs[1] = 'Walk, trot and canter; 1,150 kg with the driver';
 // The 2016 WRX's model steps its greenhouse to show the rake, and the cab reads its windshield from the tallest glass
 // box, so the cockpit gets the same parts with one full-height windshield instead
 CARS.wrx16.cab3d = {parts: CARS.wrx16.shape.parts.filter(p => p[0] !== 'g').concat([['g', -1.55, 1.0, -0.82, 0.82, 0.86, 1.4]])};
+// (the Celica's nose here follows its outside model: the hood stepping down to the low nose, the raised pop-ups)
 CARS.celica.cab3d = {paint: '#2f6b6e', ix: {dash: '#3a3c41', trim: '#33353a', wheel: 3, cluster: 'box', style: 't180'}, parts: parts(
-  full('p', 1.0, 1.4, 0.9, 0.32, 0.88), full('p', 1.4, 1.8, 0.9, 0.32, 0.83), full('p', 1.8, 2.1, 0.88, 0.32, 0.76), full('p', 2.1, 2.25, 0.8, 0.32, 0.68),
-  [['pu', 1.5, 1.74, -0.8, -0.45, 0.83, 0.93], ['pu', 1.5, 1.74, 0.45, 0.8, 0.83, 0.93]],
+  full('k', 0.98, 1.04, 0.78, 0.79, 0.85), full('p', 1.0, 1.12, 0.85, 0.42, 0.79), full('p', 1.12, 1.36, 0.85, 0.42, 0.73),
+  full('p', 1.36, 1.62, 0.85, 0.42, 0.67), full('p', 1.62, 2.12, 0.85, 0.3, 0.62),
+  sym('pp', 1.72, 1.98, 0.36, 0.8, 0.6, 0.78),
   full('g', -0.8, 1.0, 0.82, 0.9, 1.27), full('r', -0.8, 1.0, 0.84, 1.27, 1.33))};
 CARS.ram.cab3d = {paint: '#9e1b1f', ix: {dash: '#3b3e44', trim: '#2a2c30', wheel: 4, cluster: 'box'}, parts: parts(
   full('p', 1.25, 1.4, 0.98, 1.1, 1.47), full('p', 1.4, 3.2, 0.98, 1.1, 1.45), full('c', 3.2, 3.24, 0.62, 1.06, 1.14), full('c', 3.2, 3.24, 0.07, 0.7, 1.43),
@@ -4043,16 +4073,17 @@ function carLiftStep(dt) {
   if (S.wh > 0.05 && !S.whTold) { S.whTold = true; log('Front wheels up!', 'ok'); }
   S.sb.wh = S.wh;
 }
+const BIKE_LEAN = 0.65;   // share of the true lean angle a bike shows (the slide-off threshold scales with it)
 function trikeStep(dt) {
   if (!CFG.trikeTips || S.tip) return;   // (tipStep has it during a rollover)
   wheelieStep(dt);
   if (S.tip) return;
   if (CARS[CFG.body].shape.bike) {   // two wheels: it leans INTO a turn by exactly what balances it, on its contact patches
-    const ay = S.aloft ? 0 : S.v * S.r, lean = Math.atan(ay / 9.81) * 180 / Math.PI;
+    const ay = S.aloft ? 0 : S.v * S.r, lean = Math.atan(ay / 9.81) * 180 / Math.PI * BIKE_LEAN;   // BIKE_LEAN trims how far it shows leaning
     S.roll = (S.roll || 0) + (lean - (S.roll || 0)) * Math.min(1, dt * 7);
     if (S.sb) { S.sb.tilt = S.roll * Math.PI / 180; S.sb.tv = 0; S.sb.dz = 0; }
     // Past the tires' grip for a moment, leaned over, it goes down on the inside (dirt forgives a slide for longer)
-    S.slideT = (S.tireUse || 0) >= 1 && Math.abs(S.v) > 5 && Math.abs(S.v) > 12 && Math.abs(S.roll) > 30 ? (S.slideT || 0) + dt : 0;
+    S.slideT = (S.tireUse || 0) >= 1 && Math.abs(S.v) > 5 && Math.abs(S.v) > 12 && Math.abs(S.roll) > 30 * BIKE_LEAN ? (S.slideT || 0) + dt : 0;
     if (S.slideT > (onDirt() ? 1.2 : 0.7) && !S.aloft) { S.slideT = 0; startTip(Math.sign(S.roll)); }
     return;
   }
@@ -5879,7 +5910,6 @@ function shadowUnder(cp, len, wid) {
 // The truck seen from outside: wheels, a white body and cab, and a dark windshield
 function drawTruckModel() { queued(drawTruckModelRaw); }
 function drawTruckModelRaw() { drawShapeModelRaw(CARS.pickup); }
-// The Celica seen from outside: a low coupe with a glass cabin, a red roof and a rear spoiler
 // 2007 Ram 3500: a crew cab with a long bed and dual rear wheels, a tall hood with the chrome crosshair grille,
 // a chrome bumper and big tow mirrors. Wheels go down first, glass after the body, the roof last.
 function drawRamModel() { queued(drawRamModelRaw); }
@@ -5923,40 +5953,8 @@ function drawRamModelRaw() {
   for (const s of [-1, 1]) drawBox(cp, 1.0, 1.18, s > 0 ? 1.0 : -1.38, s > 0 ? 1.38 : -1.0, 1.5, 1.82, '#1b1a18', '#2a2825', '#1b1a18', null);
   if (dmg) drawDamagePatches(cp, dmg);
 }
-function drawCelicaModel() { queued(drawCelicaModelRaw); }
-function drawCelicaModelRaw() {
-  const cp = {x: S.x, y: S.y, hx: Math.cos(S.h), hy: Math.sin(S.h)};
-  if (!SHOWCASE) shadowUnder(cp, 2.4, 1.1);
-  const red = (!SHOWCASE && CFG.paint) || '#2f6b6e', rt = tint(red, 0.1), rb = tint(red, -0.15);
-  const dmg = handDamage('celica', red), st = dmg ? dmg.step : 0, sag = st >= 2 ? 0.06 : 0;   // a sagging lip from 70% body
-  QFIRST = true;   // the wheels go down first, so the body always sits over them
-  for (const u of [-1.2, 1.2]) for (const v of [-0.82, 0.82])
-    drawBox(cp, u - 0.31, u + 0.31, v - 0.11, v + 0.11, 0, 0.6, '#161413', '#161413', '#161413', null);
-  QFIRST = false;
-  // Longer wedge nose for a more aero look: the hood runs out, then the front steps down in three slices
-  drawBox(cp, -2.2, 1.4, -0.9, 0.9, 0.32, 0.95, red, rt, rb, null);
-  drawBox(cp, 1.4, 1.8, -0.9, 0.9, 0.32, 0.88, red, rt, rb, null);
-  drawBox(cp, 1.8, 2.1, -0.88, 0.88, 0.32, 0.8, red, rt, rb, null);
-  drawBox(cp, 2.1, 2.25, -0.8, 0.8, 0.32, 0.72, red, rt, rb, null);
-  // Black lip along the bottom of the nose
-  if (st < 4) drawBox(cp, 2.2, 2.28, -0.84, 0.84, 0.25 - sag, 0.4 - sag, '#161413', '#161413', '#161413', null);   // torn off below 40%
-  // Rear spoiler: drawn before the cabin, since it sits behind the glass and must not show through it
-  QKEY = -6e8;   // the spoiler sits in front of the glass from behind
-  drawBox(cp, -2.12, -1.88, -0.7, -0.6, 0.9, 0.98, '#161413', '#161413', '#161413', null);
-  drawBox(cp, -2.12, -1.88, 0.6, 0.7, 0.9, 0.98, '#161413', '#161413', '#161413', null);
-  drawBox(cp, -2.3, -1.8, -0.95, 0.95, 0.98, 1.03, red, rt, rb, null);
-  QKEY = null;
-  // Cabin: the glass first, then the roof over it
-  QKEY = -5e8; drawBox(cp, -0.8, 1.0, -0.82, 0.82, 0.95, 1.25, '#141b23', '#1c2630', '#141b23', null); QKEY = null;
-  QKEY = -1e9; drawBox(cp, -0.8, 1.0, -0.84, 0.84, 1.25, 1.32, red, rt, rb, null); QKEY = null;
-  // Pop-up headlights, always standing up. They go in with the glass, sorted by distance against it,
-  // so from the front they sit in front of the windshield and from behind the cabin hides them.
-  QKEY = -5e8;
-  for (const v of [-0.8, 0.45]) { const smashed = st >= 5 || (st >= 3 && v > 0);   // a smashed lens goes dark: the right one first
-    drawBox(cp, 1.12, 1.38, v, v + 0.35, 0.95, 1.12, '#1d2630', '#2a3440', smashed ? '#3a3630' : '#fff6d6', null); }
-  QKEY = null;
-  if (dmg) drawDamagePatches(cp, dmg);
-}
+// The Celica ST coupe: drawn from its parts list (CARS.celica.shape) like the roster cars
+function drawCelicaModel() { queued(() => drawShapeModelRaw(CARS.celica)); }
 // A roster car seen from outside, built from its parts list (see the key above the roster cars).
 // Same order as the hand-built cars: wheels first, then the body by distance, glass (-5e8), spoilers (-6e8), roof last (-1e9).
 // Visible damage on your career car's model, worse as its body condition falls. Each car has its own fixed layout of
@@ -5986,7 +5984,7 @@ function damagePlan(car, uid, body, paint) {
   // Short end pieces only: a bumper is chrome or black trim within 30 cm of the end and under 70 cm long
   const bumper = front => parts.map((q, i) => i).filter(i => ['c', 'k'].includes(parts[i][0]) && parts[i][6] < 0.8 && parts[i][2] - parts[i][1] < 0.7
     && (front ? parts[i][2] > maxU - 0.3 : parts[i][1] < minU + 0.3));
-  const lamps = parts.map((q, i) => i).filter(i => parts[i][0] === 'hl').sort(() => rnd() - 0.5);
+  const lamps = parts.map((q, i) => i).filter(i => ['hl', 'pl'].includes(parts[i][0])).sort(() => rnd() - 0.5);   // (pl: a pop-up's lens)
   const s1 = side(), s2 = -s1;
   if (step >= 1) for (let n = 0; n < 2; n++) {   // scuffs: long gray streaks low on the sides
     const u = ra + rnd() * (fa - ra), z = zb + h * (0.15 + rnd() * 0.4);
@@ -6023,7 +6021,7 @@ function drawDamagePatches(cp, plan) {
   for (const q of plan.patches) if ((q.v0 + q.v1) * camV > 0) drawBox(cp, q.u0, q.u1, q.v0, q.v1, q.z0, q.z1, q.look[0], q.look[1], q.look[2], null);
   QKEY = null;
 }
-// The hand-built Celica and Ram: their damage is laid out from their side-view parts lists (sideShape, the same boxes)
+// The hand-built Ram: its damage is laid out from its side-view parts list (sideShape, the same boxes)
 const handDamage = (id, paint) => DRAW_PLAYER && !SHOWCASE && CAREER_CAR && CAREER_CAR.body < 85
   ? damagePlan({body: id, shape: CARS[id].sideShape}, CAREER_CAR.uid, CAREER_CAR.body, paint) : null;
 function drawShapeModelRaw(car) {
@@ -6041,12 +6039,14 @@ function drawShapeModelRaw(car) {
     wd: ['#8a5a32', '#9c6a3c', '#6e4626'],   // a wooden cargo bed
     gn: ['#1f6a3a', '#2a7a46', '#185a30'],   // Gino's green
     bf: [P[0], '#2c2723', P[2]],              // a pickup bed: painted sides, a dark floor on top
-    hc: (c => [c, tint(c, 0.1), tint(c, -0.15)])((car.horse && car.horse.coat) || '#7a4a2a')   // the buggy horse's coat
+    hc: (c => [c, tint(c, 0.1), tint(c, -0.15)])((car.horse && car.horse.coat) || '#7a4a2a'),   // the buggy horse's coat
+    pp: [blk[0], P[1], blk[2]], pl: [blk[0], blk[1], '#fff6d6'],   // a raised pop-up: black housing under a painted cover, and its lens
+    am: ['#c27a22', '#d68c30', '#e89a3a'], tr: ['#4a1210', '#5a1712', '#6a1a14'], ks: blk   // amber lamps, a dark red tail panel, side trim
   };
   // The rider: helmet or cap, jacket, trousers and gloves (or bare hands), in the machine's own colors
   const R = car.rider || {hat: '#c4161c', top: '#2c4a7a', legs: '#3a4f6e', hands: '#1a1a1a'}, sh3 = c => [c, tint(c, 0.12), tint(c, -0.15)];
   Object.assign(look, {rh: sh3(R.hat), rj: sh3(R.top), rp: sh3(R.legs), rs: sh3(R.hands)});
-  const keyOf = {g: -5e8, i: -5e8, pu: -5e8, s: -6e8, sk: -6e8, r: -1e9, rk: -1e9, rg: -1.05e9, rw: -1.1e9};
+  const keyOf = {ks: -4.9e8, g: -5e8, i: -5e8, pu: -5e8, pp: -5e8, pl: -5e8, s: -6e8, sk: -6e8, r: -1e9, rk: -1e9, rg: -1.05e9, rw: -1.1e9};
   // Wheels: a tire at each corner, sized from the car's rolling radius
   QFIRST = true;
   const tr = CFG.body === car.body ? CFG.r : car.r;
@@ -6056,12 +6056,14 @@ function drawShapeModelRaw(car) {
     drawBox(cp, u - tr, u + tr, s * sh.track - sh.tw, s * sh.track + sh.tw, 0, tr * 2, wc[0], wc[1], wc[2], null);
   QFIRST = false;
   const plan = DRAW_PLAYER && !SHOWCASE && CAREER_CAR && CAREER_CAR.body < 85 && !sh.anim ? damagePlan(car, CAREER_CAR.uid, CAREER_CAR.body, paint) : null;
+  const camV = -(CAMX - cp.x) * cp.hy + (CAMY - cp.y) * cp.hx;   // which side of the car the camera is on
   parts.forEach((part, idx) => {
     let [k, u0, u1, v0, v1, z0, z1] = part, c = look[k] || P;
+    if (k === 'ks' && (v0 + v1) * camV < 0) return;   // side trim lies on the body: only the near side's, drawn after the body
     const d = plan && plan.mods.get(idx);
     if (plan && plan.mods.has(idx) && d === null) return;   // fallen off
     if (d && d.box) [, u0, u1, v0, v1, z0, z1] = d.box;
-    if (d && d.broken) c = [blk[0], blk[1], '#3a3630'];   // the lamp lens smashed: dark
+    if (d && d.broken) c = [c[0], c[1], '#3a3630'];   // the lamp lens smashed: dark
     QKEY = keyOf[k] ?? null;
     drawBox(cp, u0, u1, v0, v1, z0, z1, c[0], c[1], c[2], null);
   });
@@ -6104,8 +6106,7 @@ function drawModelOf(b) {
   const night = isNightMap() && !SHOWCASE;
   RIGID = rigidPlane(b);
   if (night) NIGHT_K = nightCarLevel(S.x, S.y);   // (Midnight City: the parts darken, and its lamps come on)
-  if (b === 'celica') drawCelicaModel();
-  else if (b === 'ram') drawRamModel();
+  if (b === 'ram') drawRamModel();
   else if (CARS[b] && CARS[b].shape) queued(() => drawShapeModelRaw(CARS[b]));
   else drawTruckModel();
   if (night) { NIGHT_K = null; drawCarLights(b); }
@@ -6308,7 +6309,7 @@ function drawTyreSmoke() {
 // (rolling coal). A worn-out engine (CFG.oilBurn, career cars) burns oil and trails blue-gray smoke.
 const EXHAUST = [];
 function pipeU() {
-  if (CFG.body === 'celica') return -2.3; if (CFG.body === 'ram') return -3.25; if (CFG.body === 'pickup') return -2.35;
+  if (CFG.body === 'ram') return -3.25; if (CFG.body === 'pickup') return -2.35;
   const sh = CARS[CFG.body] && CARS[CFG.body].shape;
   return sh ? Math.min(...sh.parts.map(q => q[1])) - 0.05 : -2.2;
 }
@@ -7402,7 +7403,7 @@ function lampSpots(b) {
     fr = Math.max(...parts.map(q => q[2])); re = Math.min(...parts.map(q => q[1]));
     const vs = parts.map(q => Math.max(Math.abs(q[3]), Math.abs(q[4]))).filter(Number.isFinite);
     if (vs.length && Math.max(...vs) > 0.3) wide = Math.max(...vs);
-    const hl = parts.find(q => q[0] === 'hl' || q[0] === 'hlt');
+    const hl = parts.find(q => q[0] === 'pl') || parts.find(q => q[0] === 'hl' || q[0] === 'hlt');
     if (hl) z = (hl[5] + hl[6]) / 2;
   }
   s = {fr, re, v: sh && sh.trike ? 0.01 : wide * 0.72, z};
@@ -13066,17 +13067,18 @@ function chooseCar(id) {
 // A three-wheeler's rider in its parts list: helmet or cap, jacket, trousers, hands, and the helmet's visor
 const riderPart = (q, sh) => ['rh', 'rj', 'rp', 'rs'].includes(q[0]) || (sh.trike && q[0] === 'g' && q[5] > 1.2);
 function sideSvg(car) {
-  const sh = car.shape || car.sideShape, paint = car.paint || sh.paint;   // sideShape: a side view only (the Celica)
+  const sh = car.shape || car.sideShape, paint = car.paint || sh.paint;   // sideShape: a side view only (the Ram)
   const X = u => (120 + u * 46).toFixed(1), Y = z => (92 - z * 46).toFixed(1);
   const col = {p: paint, bf: paint, s: paint, r: paint, k: '#161413', sk: '#161413', rk: '#161413', i: '#131212', g: '#2a3440', rg: '#2a3440',
     c: '#c9c9c4', hl: '#fff6d6', hlt: '#e8e4d0', tl: '#c23a2a', pu: '#1d2630', w: '#e8e4da', rw: '#e8e4da', wd: '#8a5a32', gn: '#1f6a3a',
     rh: (car.rider || {}).hat || '#c4161c', rj: (car.rider || {}).top || '#2c4a7a', rp: (car.rider || {}).legs || '#3a4f6e', rs: (car.rider || {}).hands || '#1a1a1a',
-    hc: (car.horse && car.horse.coat) || '#7a4a2a'};
-  const order = ['hc', 'p', 's', 'i', 'g', 'rg', 'r', 'rk', 'k', 'sk', 'wd', 'c', 'hl', 'hlt', 'tl', 'pu', 'w', 'rw'];
+    hc: (car.horse && car.horse.coat) || '#7a4a2a', pp: paint, pl: '#fff6d6', am: '#d68c30', tr: '#5a1712', ks: '#161413'};
+  const order = ['hc', 'p', 's', 'i', 'g', 'rg', 'r', 'rk', 'k', 'sk', 'ks', 'wd', 'c', 'hl', 'hlt', 'tr', 'tl', 'am', 'pu', 'pp', 'pl', 'w', 'rw'];
   const rects = sh.parts.filter(p => p[4] > 0 && !(car.noRider && riderPart(p, sh))).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
     .map(([k, u0, u1, , , z0, z1]) => `<rect x="${X(u0)}" y="${Y(z1)}" width="${((u1 - u0) * 46).toFixed(1)}" height="${Math.max(1, (z1 - z0) * 46).toFixed(1)}" fill="${col[k]}"/>`).join('');
   const wheels = sh.noWheels ? '' : sh.axles.map(u => `<circle cx="${X(u)}" cy="${Y(car.r)}" r="${(car.r * 46).toFixed(1)}" fill="${sh.wheelCol || '#161413'}"/>`
-    + (sh.wheelCol ? `<circle cx="${X(u)}" cy="${Y(car.r)}" r="${(car.r * 46 * 0.82).toFixed(1)}" fill="none" stroke="#2a1a10" stroke-width="2" stroke-dasharray="2 5"/>` : '')).join('');
+    + (sh.wheelCol ? `<circle cx="${X(u)}" cy="${Y(car.r)}" r="${(car.r * 46 * 0.82).toFixed(1)}" fill="none" stroke="#2a1a10" stroke-width="2" stroke-dasharray="2 5"/>` : '')
+    + (sh.hub ? `<circle fill="${sh.hub}" r="${(car.r * 46 * 0.55).toFixed(1)}" cx="${X(u)}" cy="${Y(car.r)}"/>` : '')).join('');   // wheel covers (written r first, so rigCar's wheel finder skips them)
   // A vehicle longer than the frame (the Ram) widens it, keeping the card's 240 x 110 shape and the ground in place
   const lo = Math.min(...sh.parts.map(q => q[1])), hi = Math.max(...sh.parts.map(q => q[2]));
   let x0 = Math.min(0, 120 + lo * 46 - 6), w = Math.max(240, 120 + hi * 46 + 6) - x0, h = 110 * w / 240;
@@ -13092,7 +13094,7 @@ function buildRosterCards() {
   let html = '';
   for (const r of ROSTER) {
     const car = CARS[r.body];
-    if (!car || !car.shape || r.body === 'pickup') continue;   // the pickup keeps its own card, first in the list
+    if (!car || !car.shape || r.body === 'pickup' || r.body === 'celica') continue;   // the pickup and Celica keep their own cards
     html += `<div class="car-card">${sideSvg(car)}<h2>${r.year} ${r.name}</h2><ul id="spec-${r.body}"></ul>
       <details><summary class="lbl" style="cursor:pointer">Forced induction and mods</summary><div class="mods" data-modcar="${r.body}"></div></details>
       <button data-car="${r.body}">Drive the ${car.short}</button></div>`;
