@@ -603,7 +603,7 @@ const CAB3D = {pickup: {eye: {u: 0.75, v: -0.38, z: 1.6}, hor: 0.42},
   horse: {eye: {u: -0.08, v: 0, z: 2.6}, hor: 0.32}, buggy: {eye: {u: -0.55, v: -0.25, z: 1.85}, hor: 0.36}};
 const SWAY = {u: 0, v: 0, z: 0};
 // Player settings, saved in this browser (the Settings menu on the title screen)
-const SETTINGS = Object.assign({units: 'mph', cockpit: '3d', quality: 'full', sway: true, terrain: 'normal', renderer: 'gl', volume: 80, music: true, view: 'cockpit', tips: true, pixel: 'off'},
+const SETTINGS = Object.assign({units: 'mph', cockpit: '3d', quality: 'full', sway: true, terrain: 'normal', renderer: 'gl', volume: 80, music: true, view: 'cockpit', tips: true, pixel: 'off', models: 'retro'},
   (() => { try { return JSON.parse(localStorage.getItem('pt-settings')) || {}; } catch (e) { return {}; } })());
 // The career save, and the owned car being driven if any (declared up here: the very first state reads it)
 let CAREER = null, CAREER_CAR = null;   // CAREER_CAR: the owned car being driven, if any
@@ -6108,9 +6108,10 @@ function drawRamModelRaw() {
   const dmg = handDamage('ram', red), st = dmg ? dmg.step : 0, sag = st >= 2 ? 0.07 : 0;   // a sagging bumper from 70% body
   // Tires: singles at the front, duals at the back
   QFIRST = true;
+  const W = wheelLook({hub: '#b9b9b4'}), [aF, aR, wst] = wheelTurns('ram', 0.4, 4.05);
   for (const s of [-1, 1]) {
-    drawBox(cp, 1.75, 2.55, s * 0.86 - 0.15, s * 0.86 + 0.15, 0, 0.8, ...tire, null);
-    for (const v of [0.8, 1.15]) drawBox(cp, -2.3, -1.5, s * v - 0.15, s * v + 0.15, 0, 0.8, ...tire, null);
+    drawWheel(cp, 2.15, s * 0.86, 0.4, 0.15, aF, clamp(wst, -0.6, 0.6), W);
+    for (const v of [0.8, 1.15]) drawWheel(cp, -1.9, s * v, 0.4, 0.15, aR, 0, W);
   }
   QFIRST = false;
   // Body: one solid lower body the full length, with the dually fender flares at the back
@@ -6142,7 +6143,7 @@ function drawRamModelRaw() {
 }
 // The Celica ST coupe: drawn from its parts list (CARS.celica.shape) like the roster cars
 // (smooth on WebGL within 70 m of the camera; farther off, on Classic, or if its shader fails, the box model)
-function drawCelicaModel() { if (GLC.rec && Math.hypot(CAMX - S.x, CAMY - S.y) < 70 && celgInit()) drawCelicaSmooth(); else queued(() => drawShapeModelRaw(CARS.celica)); }
+function drawCelicaModel() { if (SETTINGS.models === 'real' && GLC.rec && Math.hypot(CAMX - S.x, CAMY - S.y) < 70 && celgInit()) drawCelicaSmooth(); else queued(() => drawShapeModelRaw(CARS.celica)); }
 // A roster car seen from outside, built from its parts list (see the key above the roster cars).
 // Same order as the hand-built cars: wheels first, then the body by distance, glass (-5e8), spoilers (-6e8), roof last (-1e9).
 // Visible damage on your career car's model, worse as its body condition falls. Each car has its own fixed layout of
@@ -6242,13 +6243,17 @@ function drawShapeModelRaw(car) {
   const tr = CFG.body === car.body ? CFG.r : car.r;
   const frontU = Math.max(...sh.axles);
   const wc = sh.wheelCol ? [sh.wheelCol, tint(sh.wheelCol, 0.12), tint(sh.wheelCol, -0.15)] : ['#161413', '#1f1c1a', '#161413'];   // (the buggy's wheels are wood)
-  if (!sh.noWheels) for (const u of sh.axles) for (const s of (sh.bike || (sh.trike && u === frontU) ? [0] : [-1, 1]))
-    drawBox(cp, u - tr, u + tr, s * sh.track - sh.tw, s * sh.track + sh.tw, 0, tr * 2, wc[0], wc[1], wc[2], null);
+  if (!sh.noWheels) {
+    const W = wheelLook(sh), rearU = Math.min(...sh.axles), [aF, aR, st] = wheelTurns(car.body, tr, frontU - rearU);
+    for (const u of sh.axles) for (const s of (sh.bike || (sh.trike && u === frontU) ? [0] : [-1, 1]))
+      drawWheel(cp, u, s * sh.track, tr, sh.tw, u === frontU ? aF : aR, u === frontU ? clamp(st, -0.6, 0.6) : 0, W);
+  }
   QFIRST = false;
   const plan = DRAW_PLAYER && !SHOWCASE && CAREER_CAR && CAREER_CAR.body < 85 && !sh.anim ? damagePlan(car, CAREER_CAR.uid, CAREER_CAR.body, paint) : null;
   const camV = -(CAMX - cp.x) * cp.hy + (CAMY - cp.y) * cp.hx, camU = (CAMX - cp.x) * cp.hx + (CAMY - cp.y) * cp.hy;   // where the camera is, in the car's frame
   parts.forEach((part, idx) => {
     let [k, u0, u1, v0, v1, z0, z1] = part, c = look[k] || P;
+    if (k === 'wc') return;   // (the old flat wheel covers: the round wheels' hubs take sh.hub's color)
     if (k === 'ks' && (v0 + v1) * camV < 0) return;   // side trim lies on the body: only the near side's, drawn after the body
     if (k === 'pl' && camU < u1) return;   // a pop-up's lens: drawn after its housing, and only seen from ahead
     const d = plan && plan.mods.get(idx);
@@ -6260,6 +6265,92 @@ function drawShapeModelRaw(car) {
   });
   QKEY = null;
   if (plan) drawDamagePatches(cp, plan);
+}
+
+/* ---------- Round wheels ---------- */
+// Every vehicle's wheels are short many-sided drums (a tire with a tread band and two flat sides), turning with the
+// road: on each visible side a hub of alternating light and dark sectors (the spokes or hubcap) and a dark center cap,
+// so you can see them roll. Your own car's front wheels also steer, and each axle turns at its own speed (driven
+// wheels spin with wheelspin, locked ones stop: S.waF / S.waR, advanced in frame()). Anything else gets its turn from
+// how far it has moved since the last frame (spinFor: a short list of recent wheel sets matched by body and nearness),
+// with its steering guessed from how fast it is turning. Drawn in one piece among a model's queued boxes (wheels go
+// first), through glcBox's buffer on WebGL (glcFaces) or painted on Classic.
+const WHEEL_SPIN = [];
+function spinFor(body, x, y, h, r, wb) {
+  const now = performance.now();
+  let best = null, bd = 4;
+  for (const e of WHEEL_SPIN) if (e.body === body) { const d = Math.hypot(e.x - x, e.y - y); if (d < bd) { bd = d; best = e; } }
+  if (!best) { best = {body, x, y, h, a: Math.random() * 6.28, st: 0, t: now}; WHEEL_SPIN.push(best); if (WHEEL_SPIN.length > 80) WHEEL_SPIN.splice(0, 20); }
+  const dx = x - best.x, dy = y - best.y, ds = dx * Math.cos(h) + dy * Math.sin(h);
+  if (Math.abs(ds) > 0.01) {
+    best.a += ds / r;
+    const k = clamp(wrapA(h - best.h) / ds * wb, -0.5, 0.5);   // turning rate over distance x wheelbase: the steering angle
+    best.st += (k - best.st) * 0.25;
+    best.x = x; best.y = y; best.h = h;
+  } else if (now - best.t > 300) best.st *= 0.9;
+  best.t = now;
+  if (Math.random() < 0.01) for (let i = WHEEL_SPIN.length - 1; i >= 0; i--) if (now - WHEEL_SPIN[i].t > 3000) WHEEL_SPIN.splice(i, 1);
+  return best;
+}
+// [front turn, rear turn, steer] for the vehicle being drawn now
+function wheelTurns(body, r, wb) {
+  if (DRAW_PLAYER && !SHOWCASE) return [S.waF || 0, S.waR || 0, S.steer || 0];
+  const e = spinFor(body, S.x, S.y, S.h, r, wb);
+  return [e.a, e.a, e.st];
+}
+// Advance your own wheels: the driven axle at the wheel speed (S.ww, so it spins up), the other at road speed, a locked axle stopped
+function wheelStep(dt) {
+  const r = CFG.r || 0.3, dr = CFG.drive || 'rear', w = S.ww ?? S.v;
+  S.waF = ((S.waF || 0) + (S.lockF ? 0 : dr !== 'rear' ? w : S.v) / r * dt) % 6283.2;
+  S.waR = ((S.waR || 0) + (S.lockR || S.handPull ? 0 : dr !== 'front' ? w : S.v) / r * dt) % 6283.2;
+}
+// The colors: a tire, its sides, the two hub colors and the center cap (the buggy's wheels are all wood)
+function wheelLook(sh) {
+  if (sh && sh.wheelCol) { const c = sh.wheelCol; return {tread: tint(c, -0.1), side: c, a: tint(c, 0.18), b: tint(c, -0.3), cap: tint(c, -0.4), n: 12}; }
+  const hub = (sh && sh.hub) || '#8e8f8a';
+  return {tread: '#1c1a18', side: '#141210', a: hub, b: tint(hub, -0.42), cap: '#2a2826', n: 8};
+}
+function drawWheel(cp, u, v, r, hw, spin, steer, W) {
+  if (GLS_REC) return;
+  if (!MODEL_Q) { drawWheelNow(cp, u, v, r, hw, spin, steer, W); return; }
+  const rx = -cp.hy, ry = cp.hx, lu = (CAMX - cp.x) * cp.hx + (CAMY - cp.y) * cp.hy, lv = (CAMX - cp.x) * rx + (CAMY - cp.y) * ry;
+  MODEL_Q.push({d: 1e9 + Math.hypot(lu - u, lv - v), run: () => { CUR_PITCH = 0; CUR_WHEEL = true; drawWheelNow(cp, u, v, r, hw, spin, steer, W); CUR_WHEEL = false; }});
+}
+function drawWheelNow(cp, u, v, r, hw, spin, steer, W) {
+  const R = RIGID, rx = -cp.hy, ry = cp.hx;
+  const wdz = R && CUR_WHEEL ? wheelDz(R, u - r, u + r, v - hw, v + hw) : 0;
+  const ex = CAMX - (R ? R.ox : cp.x), ey = CAMY - (R ? R.oy : cp.y), ez = CAMZ - (R ? R.oz : elev(cp.x, cp.y));
+  const E = R ? [ex * R.fx + ey * R.fy + ez * R.fz, ex * R.rx + ey * R.ry + ez * R.rz, ex * R.ux + ey * R.uy + ez * R.uz - wdz] : [ex * cp.hx + ey * cp.hy, ex * rx + ey * ry, ez - LIFT];
+  const cs = Math.cos(steer), sn = Math.sin(steer);
+  const L = (du, dv, z) => [u + du * cs - dv * sn, v + du * sn + dv * cs, z];   // the wheel's own frame (du forward, dv across) to the car's
+  const far = Math.hypot(E[0] - u, E[1] - v), N = far < 25 ? 14 : far < 80 ? 10 : 8;
+  const sees = (n, p) => (E[0] - p[0]) * n[0] + (E[1] - p[1]) * n[1] + (E[2] - p[2]) * n[2] > 0;
+  const polys = [];
+  // The tread: one face per side of the drum
+  for (let i = 0; i < N; i++) {
+    const a0 = i / N * 6.2832 - spin, a1 = (i + 1) / N * 6.2832 - spin, am = (a0 + a1) / 2;
+    const n = [Math.cos(am) * cs, Math.cos(am) * sn, Math.sin(am)], p = L(Math.cos(am) * r, 0, r + Math.sin(am) * r);
+    if (!sees(n, p)) continue;
+    polys.push([[L(Math.cos(a0) * r, -hw, r + Math.sin(a0) * r), L(Math.cos(a1) * r, -hw, r + Math.sin(a1) * r), L(Math.cos(a1) * r, hw, r + Math.sin(a1) * r), L(Math.cos(a0) * r, hw, r + Math.sin(a0) * r)], i % 2 ? W.tread : tint(W.tread, 0.06)]);
+  }
+  // Each side that faces the eye: the tire's flat side, then the hub's sectors and the center cap just proud of it
+  for (const sd of [-1, 1]) {
+    const n = [-sd * sn, sd * cs, 0], c0 = L(0, sd * hw, r);
+    if (!sees(n, c0)) continue;
+    const ring = (rr, off, a0) => Array.from({length: N}, (_, i) => { const a = a0 + i / N * 6.2832 - spin; return L(Math.cos(a) * rr, sd * (hw + off), r + Math.sin(a) * rr); });
+    polys.push([ring(r, 0, 0), W.side]);
+    const K = W.n, rr = r * 0.62, o = 0.006;
+    for (let k = 0; k < K; k++) {
+      const a0 = k / K * 6.2832 - spin, a1 = (k + 1) / K * 6.2832 - spin, pts = [L(0, sd * (hw + o), r)];
+      for (let j = 0; j <= 2; j++) { const a = a0 + (a1 - a0) * j / 2; pts.push(L(Math.cos(a) * rr, sd * (hw + o), r + Math.sin(a) * rr)); }
+      polys.push([pts, k % 2 ? W.b : W.a]);
+    }
+    polys.push([ring(r * 0.17, o * 2, 0.3), W.cap]);
+  }
+  if (GLC.rec) { glcFaces(cp, wdz, polys); return; }
+  const P = R ? (a) => { const q = rigidPt(R, a[0], a[1], a[2], 0); return projZ(q[0], q[1], q[2] + wdz); }
+    : (a) => proj(cp.x + cp.hx * a[0] + rx * a[1], cp.y + cp.hy * a[0] + ry * a[1], a[2] + LIFT);
+  for (const [pts, col] of polys) seamFill(pts.map(P), NIGHT_K !== null ? nightTint(col, NIGHT_K) : col);
 }
 // Any car's model, by its body
 // A vehicle is rigid: while it is drawn, its parts are placed in one frame, rotated to rest on the ground under its wheels
@@ -6329,8 +6420,7 @@ function drawCar(car) {
   const k = F / c0[2];
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath(); ctx.ellipse(c0[0], c0[1], 2.4 * k, 0.4 * k, 0, 0, Math.PI * 2); ctx.fill();
-  for (const u of [-1.4, 1.4]) for (const v of [-0.9, 0.9])
-    drawBox(cp, u - 0.4, u + 0.4, v - 0.2, v + 0.2, 0, 0.55, '#161413', '#161413', '#161413', null);
+  for (const u of [-1.4, 1.4]) for (const v of [-0.9, 0.9]) drawWheel(cp, u, v, 0.3, 0.12, 0, 0, wheelLook(null));
   drawBox(cp, -2.2, 2.2, -0.9, 0.9, 0.25, 0.9, car.col, tint(car.col, 0.15), tint(car.col, -0.15), ['#fff6d6', '#d02a1e']);
   drawBox(cp, -1.1, 0.9, -0.8, 0.8, 0.9, 1.5, '#1d2630', '#2a3440', '#1d2630', null);
 }
@@ -8038,6 +8128,19 @@ function glcBox(cp, u0, u1, v0, v1, z0, z1, side, top, end) {
   if (camZ > z1) quad([u0, v0, z1], [u1, v0, z1], [u1, v1, z1], [u0, v1, z1], top);
   if (alpha < 255) GLC.nT = n; else GLC.n = n;
 }
+// Flat polygons in a vehicle's own frame ([u, v, z] corners, already culled), into the same list as glcBox: the round wheels
+function glcFaces(cp, wdz, polys) {
+  const R = RIGID, rx = -cp.hy, ry = cp.hx, alpha = Math.round(ctx.globalAlpha * 255), L = alpha < 255 ? GLC.t : GLC.o, f = L.f, u = L.u, cx = GLC.cx, cy = GLC.cy;
+  let n = alpha < 255 ? GLC.nT : GLC.n;
+  for (const [pts, col] of polys) {
+    if (n > GLC_V - pts.length * 3) break;
+    const k = 1 - GLC.seq++ * 1.5e-5, q = glsCol(NIGHT_K !== null ? nightTint(col, NIGHT_K) : col), c = (alpha << 24 | Math.min(255, q[2]) << 16 | Math.min(255, q[1]) << 8 | Math.min(255, q[0])) >>> 0;
+    const W = pts.map(([U, V, Z]) => { if (R) { const w = rigidPt(R, U, V, Z, 0); w[2] += wdz; return w; } const x = cp.x + cp.hx * U + rx * V, y = cp.y + cp.hy * U + ry * V; return [x, y, elev(x, y) + Z + LIFT]; });
+    const put = w => { const o = n * 7; f[o] = CAMX + (w[0] - CAMX) * k; f[o + 1] = CAMY + (w[1] - CAMY) * k; f[o + 2] = CAMZ + (w[2] - CAMZ) * k; u[o + 3] = c; f[o + 4] = cx; f[o + 5] = cy; f[o + 6] = GLC.reach; n++; };
+    for (let i = 1; i < W.length - 1; i++) { put(W[0]); put(W[i]); put(W[i + 1]); }
+  }
+  if (alpha < 255) GLC.nT = n; else GLC.n = n;
+}
 // A flat polygon of [x, y, z] world points in the solid list (a cone's side, a windsock's band)
 function glcPoly(pts, col) {
   const q = glsCol(col), p = (255 << 24 | q[2] << 16 | q[1] << 8 | q[0]) >>> 0, f = GLC.o.f, u = GLC.o.u, k = 1 - GLC.seq++ * 1.5e-5;
@@ -8758,7 +8861,7 @@ function celgCabBuffers(gl, quadsOf, send) {
   CELG.cab = send(a); CELG.nCab = a.length / 7; CELG.cabWheel = send(b); CELG.nCabWheel = b.length / 7; CELG.cabLever = send(c); CELG.nCabLever = c.length / 7;
 }
 // Is the smooth cockpit in use? (the Celica, a 3D cockpit setting, the WebGL renderer working)
-function celCabOn() { return CFG.body === 'celica' && !SHOWCASE && SETTINGS.cockpit !== '2d' && glsOn() && celgInit() && !!CELG.cab; }
+function celCabOn() { return CFG.body === 'celica' && SETTINGS.models === 'real' && !SHOWCASE && SETTINGS.cockpit !== '2d' && glsOn() && celgInit() && !!CELG.cab; }
 // The material tables as the shader wants them
 function celgMatArrays(list, extra) {
   const mc = new Float32Array(128), mp = new Float32Array(128);
@@ -10806,6 +10909,7 @@ const SET_ROWS = [
   ['view', 'Start drives in', 'V still switches during a drive.', [['cockpit', 'Cockpit'], ['chase', 'Chase camera']]],
   ['renderer', 'Renderer', 'WebGL draws the ground on the graphics chip, which is much faster. Classic is the old way: use it if the ground looks wrong or runs slowly on your computer.', [['gl', 'WebGL'], ['classic', 'Classic']]],
   ['terrain', 'Graphics', 'Lower is faster on slow machines. Low also draws at a lower resolution, with coarser ground, simpler trees and crowds, a shorter view distance and less rain, snow and falling leaves.', [['high', 'High'], ['normal', 'Normal'], ['low', 'Low']]],
+  ['models', 'Car models', 'Realistic swaps in smooth, curved models where a car has one (so far the 1991 Celica, inside and out, on the WebGL renderer). Retro keeps every car built from blocks.', [['retro', 'Retro'], ['real', 'Realistic']]],
   ['pixel', 'Pixel filter', 'SNES draws the game at a 16-bit console\'s 224 lines, with big square pixels and its 15-bit colors. It also runs faster.', [['off', 'Off'], ['snes', 'SNES']]],
   ['music', 'Title music', '', [['on', 'On'], ['off', 'Off']]],
   ['tips', 'Pop-up tips', 'The hints and notes that pop up while you drive. Off still shows warnings about damage and penalties.', [['on', 'On'], ['off', 'Off']]]
@@ -11118,6 +11222,7 @@ function frame(now) {
     if (isNightMap() && !S.finished && $('overlay').hidden) trafficStep(dt);
     if (EVT !== null && !S.finished) eventTick(dt);
     if (CAREER_CAR) careerTick(dt);
+    wheelStep(dt);
   }
   netTick();   // online: send where you are
   draw(dt); if (PIXEL()) pixelPass();
