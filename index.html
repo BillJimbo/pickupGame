@@ -230,6 +230,11 @@ body.on-title #stats,body.on-title #dash,body.on-title #pedals,body.on-title #lo
 .tt-carbar .makePick button svg{width:22px;height:22px}
 #ghostInfo{margin-top:10px}
 #netBox{margin-top:10px}
+body.mp #modePick{display:none}
+.net-kind{margin:8px 0 2px}
+.net-start{margin-top:8px}
+.net-start button{border-color:var(--accent);color:var(--accent)}
+.net-start button:disabled{opacity:.45;cursor:default}
 .net-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between}
 .net-row .net-or{color:var(--dim);font-size:12.5px}
 #netCode{width:6.5em;text-transform:uppercase;letter-spacing:.2em;font:inherit;font-weight:700;padding:6px 8px;background:var(--panel);color:inherit;border:1px solid var(--line);border-radius:3px}
@@ -421,6 +426,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
       <button class="mode" id="modeDrive" type="button"><b>Driving School</b><span>Five lessons on the training lot, from starting the engine to a hill start. Pass each one to unlock the next.</span></button>
       <button class="mode" id="modeCareer" type="button"><b>Career</b><span>Buy rusty old cars, fix them up at Bill's Shop and build them into racing machines.</span></button>
       <button class="mode" id="modeTest" type="button"><b>Test Track</b><span>Pick a car and a map, and drive freely. No clock, no penalties.</span></button>
+      <button class="mode" id="modeMulti" type="button"><b>Multiplayer</b><span>Race your friends online, or just drive around together. Host a room and share its code.</span></button>
     </div>
   </div>
 </div>
@@ -461,8 +467,8 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 </div>
 <div id="garage" hidden>
   <div class="garage-inner">
-    <div class="lbl">Test Track</div>
-    <h1>Set up your drive</h1>
+    <div class="lbl" id="garageLbl">Test Track</div>
+    <h1 id="garageH1">Set up your drive</h1>
     <div class="tt-steps">
     <section class="tt-step"><h3 class="tt-h"><b>1</b>Track</h3>
     <div class="mapPick" id="mapPick" role="group" aria-label="Track">
@@ -490,8 +496,8 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
         <p class="tt-hint" id="wxHint"></p>
         <div class="seg" id="todPick" role="group" aria-label="Time of day" style="margin-top:10px"><span>Time</span><button type="button" data-tod="morning">Morning</button><button type="button" data-tod="day" class="on">Day</button><button type="button" data-tod="evening">Evening</button><button type="button" data-tod="night">Night</button></div>
         <p class="tt-hint" id="todHint"></p></div>
-      <div><h3 class="tt-h"><b>3</b>Mode</h3>
-        <div class="seg" id="modePick" role="group" aria-label="Mode"><button type="button" data-mode="free" class="on">Free drive</button><button type="button" data-mode="timed">Timed run</button><button type="button" data-mode="street">Race</button><button type="button" data-mode="ghost">Race a ghost</button><button type="button" data-mode="online">Online</button></div>
+      <div><h3 class="tt-h" id="modeHead"><b>3</b>Mode</h3>
+        <div class="seg" id="modePick" role="group" aria-label="Mode"><button type="button" data-mode="free" class="on">Free drive</button><button type="button" data-mode="timed">Timed run</button><button type="button" data-mode="street">Race</button><button type="button" data-mode="ghost">Race a ghost</button></div>
         <div class="tt-mode" data-for="free"><p class="tt-hint">No clock and no laps: take any car anywhere.</p></div>
         <div class="tt-mode" data-for="timed" hidden>
           <div class="seg" id="runPick" role="group" aria-label="Laps" style="margin-top:10px"><span>Laps</span><button type="button" data-laps="1" class="on">1</button><button type="button" data-laps="2">2</button><button type="button" data-laps="3">3</button><button type="button" data-laps="5">5</button></div>
@@ -509,7 +515,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
           <div id="ghostInfo"></div>
         </div>
         <div class="tt-mode" data-for="online" hidden>
-          <p class="tt-hint">Drive with friends over the internet. One of you hosts a room and shares its four-letter code; the others join with it. Everyone picks their own car and drives freely on the host's track, seeing each other's cars live. Cars pass through each other: no crashes.</p>
+          <p class="tt-hint">Play with friends over the internet. One of you hosts a room and shares its four-letter code; the others join with it. The host picks the track and either <b>Free roam</b> (everyone drives where they like) or a <b>Race</b> (everyone picks a car, the host starts it, and you all get the same countdown). Cars pass through each other: no crashes.</p>
           <label class="tt-name">Your name <input type="text" id="netName" maxlength="24" placeholder="Driver" aria-label="Your name, shown over your car online"></label>
           <div id="netBox"></div>
         </div>
@@ -11249,6 +11255,11 @@ function showGarage() {
   $('check').hidden = true;
   $('career').hidden = true;
   buildModLists(); applyGarageLocks();   // the career may have unlocked more since last time
+  MP_RACE = null;   // (an online race ends here, finished or not)
+  document.body.classList.toggle('mp', MP);
+  $('garageLbl').textContent = MP ? 'Multiplayer' : 'Test Track';
+  $('garageH1').textContent = MP ? 'Race or drive with friends' : 'Set up your drive';
+  $('modeHead').innerHTML = MP ? '<b>3</b>Room' : '<b>3</b>Mode';
   renderGhostInfo(); renderNet(); updateTTSetup();
   $('garage').hidden = false;
 }
@@ -11265,7 +11276,9 @@ function showTitle() {
   $('career').hidden = true;
   $('title').hidden = false;
 }
-$('modeTest').addEventListener('click', () => { LESSON = null; CAREER_CAR = null; RACE = null; EVT = null; showGarage(); });
+$('modeTest').addEventListener('click', () => { LESSON = null; CAREER_CAR = null; RACE = null; EVT = null; MP = false; if (TT_MODE === 'online') TT_MODE = 'free'; showGarage(); });
+// Multiplayer is the Test Track garage with its Mode step replaced by the online room (body.mp hides the mode buttons)
+$('modeMulti').addEventListener('click', () => { LESSON = null; CAREER_CAR = null; RACE = null; EVT = null; MP = true; TT_MODE = 'online'; showGarage(); });
 function buildGate() {
   const labels = CFG.gate.labels || {'-1': 'R'}, ty = {};
   let s = '';
@@ -12650,6 +12663,7 @@ const LOOP_MAPS = ['circuit', 'short', 'plot', 'dirt', 'rally', 'forest', 'oval'
 const MAP_NAMES = {circuit: 'Circuit', short: 'Club circuit', plot: 'Parking lot', dirt: 'Dirt course', rally: 'Rally stage', forest: 'Forest stage', oval: 'Speedway', airfield: 'Airfield', pass: 'Mountain pass', night: 'Midnight City', freeway: 'Freeway', trail: 'Boulder Canyon'};
 const ttRunOn = () => TT_MODE === 'street' || (TT_MODE === 'timed' && LOOP_MAPS.includes(TT_MAP));
 function ttRunEvent() {
+  if (MP_RACE) return {id: 'mprace', mp: true, map: MP_RACE.map, laps: MP_RACE.laps, prize: 0, rain: MP_RACE.rain, tod: MP_RACE.tod, name: 'Online race', series: {name: 'Multiplayer', solo: true}};
   if (TT_MODE === 'street' && !GHOST_RACE) return {id: 'ttstreet', ttStreet: true, map: TT_MAP, laps: TT_LAPS, prize: 0, rain: TT_RAIN ? 1 : 0, tod: TT_TIME, name: 'Race',
     series: {name: 'Test Track', skill: 0.82, pool: (r, me) => r.tier === me.tier && !CARS[r.body].trikeTips}};
   const laps = GHOST_RACE && GHOST ? GHOST.laps : TT_LAPS, map = GHOST_RACE && GHOST ? GHOST.map : TT_MAP;
@@ -12773,7 +12787,7 @@ function updateTTSetup() {
   document.querySelectorAll('#modePick [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === TT_MODE));
   document.querySelectorAll('.tt-mode').forEach(d => { d.hidden = d.dataset.for !== TT_MODE; });
   document.querySelectorAll('#wxPick [data-wx]').forEach(b => b.classList.toggle('on', (b.dataset.wx === 'rain') === TT_RAIN));
-  const timed = TT_MODE === 'timed', street = TT_MODE === 'street';
+  const timed = TT_MODE === 'timed', street = TT_MODE === 'street' || (TT_MODE === 'online' && MP_ROOM && MP_ROOM.kind === 'race');
   // ghost: the ghost picks the track, weather and time; joined to someone else's online room, the host does
   const joined = TT_MODE === 'online' && NET && NET.status === 'on' && !NET.host, ghost = TT_MODE === 'ghost' || joined;
   if ((timed || street) && !LOOP_MAPS.includes(TT_MAP)) { TT_MAP = 'circuit'; document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP)); }
@@ -12825,7 +12839,11 @@ $('ghostInfo').addEventListener('click', e => {
 const NET_BROKER = 'wss://0.peerjs.com/peerjs?key=peerjs', NET_PREFIX = 'pickuptrial-', NET_MAX = 6, NET_HZ = 15, NET_DELAY = 0.12;
 const NET_ICE = [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}];
 const NET_CODES = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-var NET = null;   // (var: the garage code reads it before this block runs) {host, code, ws, me, peers: {id: player}, links: {brokerId: link}, status, err, room, sendT, beat}
+var NET = null;   // (var: the garage code reads it before this block runs)
+// Multiplayer: MP is set while the garage is the Multiplayer screen; MP_ROOM is the room's kind ('free' roam or 'race')
+// and laps (the host's choice, copied to joiners); MP_RACE is the race being run: its grid (ids, names, cars), the track,
+// the moment the lights go green on this computer's clock (goAt) and everyone's finishing times (fin, by player id)
+var MP = false, MP_ROOM = {kind: 'free', laps: 2}, MP_RACE = null;   // (NET: {host, code, ws, me, peers: {id: player}, links: {brokerId: link}, status, err, room, sendT, beat}
 const netNow = () => performance.now() / 1000;
 const netEsc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const netName = () => (SETTINGS.driverName || '').trim().slice(0, 24) || 'Driver';
@@ -12952,29 +12970,44 @@ function netNote(text) { if ($('garage').hidden && typeof log === 'function') lo
 const netPlayer = (id, name) => NET.peers[id] || (NET.peers[id] = {id, name: String(name || 'Driver').slice(0, 24), buf: [], off: null, last: 0});
 function netCtl(L, m) {
   if (!m || typeof m.k !== 'string') return;
+  const nm = v => String(v || 'Driver').slice(0, 24), car = v => CARS[v] ? v : null;
   if (NET.host) {
     if (m.k === 'hi' && !L.id) {
       L.id = 'p' + NET.nextId++;
       const P = netPlayer(L.id, m.name);
-      netSendTo(L, 'ctl', {k: 'welcome', you: L.id, code: NET.code, room: netRoom(), players: [{id: 'h', name: netName()}].concat(Object.values(NET.peers).filter(q => q !== P).map(q => ({id: q.id, name: q.name})))});
+      netSendTo(L, 'ctl', {k: 'welcome', you: L.id, code: NET.code, room: netRoom(), players: [{id: 'h', name: netName(), pick: NET.myCar || null}].concat(Object.values(NET.peers).filter(q => q !== P).map(q => ({id: q.id, name: q.name, pick: q.pick || null})))});
       netAll('ctl', {k: 'join', id: L.id, name: P.name}, L);
       netNote(`${P.name} joined`); renderNet();
-    } else if (m.k === 'name' && L.id && NET.peers[L.id]) { NET.peers[L.id].name = String(m.name || 'Driver').slice(0, 24); netAll('ctl', {k: 'name', id: L.id, name: NET.peers[L.id].name}, L); renderNet(); }
+    } else if (!L.id) return;
+    else if (m.k === 'ping') netSendTo(L, 'ctl', {k: 'pong', t: m.t, h: netNow()});   // the joiner works out the clock difference
+    else if (m.k === 'name' && NET.peers[L.id]) { NET.peers[L.id].name = nm(m.name); netAll('ctl', {k: 'name', id: L.id, name: NET.peers[L.id].name}, L); renderNet(); }
+    else if (m.k === 'car' && NET.peers[L.id]) { NET.peers[L.id].pick = car(m.car); netAll('ctl', {k: 'car', id: L.id, car: NET.peers[L.id].pick}, L); renderNet(); }
+    else if (m.k === 'fin' && typeof m.time === 'number' && isFinite(m.time)) { netAll('ctl', {k: 'fin', id: L.id, time: m.time}, L); mpFin(L.id, m.time); }
     return;
   }
   if (m.k === 'welcome') {
-    NET.me = String(m.you); NET.status = 'on';
-    for (const p of m.players || []) if (p && p.id) netPlayer(String(p.id), p.name);
+    NET.me = String(m.you); NET.status = 'on'; NET.clockOff = 0; NET.rtt = 9;
+    for (const p of m.players || []) if (p && p.id) netPlayer(String(p.id), p.name).pick = car(p.pick);
     netRoomApply(m.room);
     if (NET.ws) { const ws = NET.ws; NET.ws = null; clearInterval(NET.beat); ws.close(); }   // connected: the broker is no longer needed
+    for (let i = 0; i < 6; i++) setTimeout(() => { if (netOn()) for (const Q of Object.values(NET.links)) netSendTo(Q, 'ctl', {k: 'ping', t: netNow()}); }, 200 + i * 350);
+    if (NET.myCar) netSendTo(L, 'ctl', {k: 'car', car: NET.myCar});
     renderNet();
-  } else if (m.k === 'join' && m.id) { netPlayer(String(m.id), m.name); netNote(`${String(m.name).slice(0, 24)} joined`); renderNet(); }
+  } else if (m.k === 'pong' && typeof m.t === 'number' && typeof m.h === 'number') {
+    // The host's clock against ours, from the quickest round trip: the host's time when it answered, plus half the trip
+    const now = netNow(), rtt = now - m.t;
+    if (rtt >= 0 && rtt < NET.rtt) { NET.rtt = rtt; NET.clockOff = m.h + rtt / 2 - now; }
+  }
+  else if (m.k === 'join' && m.id) { netPlayer(String(m.id), m.name); netNote(`${nm(m.name)} joined`); renderNet(); }
   else if (m.k === 'leave' && m.id && NET.peers[m.id]) { netNote(`${NET.peers[m.id].name} left`); delete NET.peers[m.id]; renderNet(); }
-  else if (m.k === 'name' && m.id && NET.peers[m.id]) { NET.peers[m.id].name = String(m.name || 'Driver').slice(0, 24); renderNet(); }
+  else if (m.k === 'name' && m.id && NET.peers[m.id]) { NET.peers[m.id].name = nm(m.name); renderNet(); }
+  else if (m.k === 'car' && m.id && NET.peers[m.id]) { NET.peers[m.id].pick = car(m.car); renderNet(); }
   else if (m.k === 'room') netRoomApply(m.room);
+  else if (m.k === 'start') mpStart(m);
+  else if (m.k === 'fin' && m.id && typeof m.time === 'number' && isFinite(m.time)) mpFin(String(m.id), m.time);
 }
 // The room: the host's track, weather and time of day
-const netRoom = () => ({map: TT_MAP, rain: TT_RAIN ? 1 : 0, tod: TT_TIME});
+const netRoom = () => ({map: TT_MAP, rain: TT_RAIN ? 1 : 0, tod: TT_TIME, kind: MP_ROOM.kind, laps: MP_ROOM.laps});
 function netRoomSend() {
   if (!netOn() || !NET.host) return;
   const r = netRoom(), key = JSON.stringify(r);
@@ -12985,6 +13018,7 @@ function netRoomApply(r) {
   if (!r || !document.querySelector(`#mapPick [data-map="${r.map}"]`)) return;
   const moved = NET.room && NET.room.map !== r.map;
   NET.room = {map: r.map, rain: r.rain ? 1 : 0, tod: TOD[r.tod] ? r.tod : 'day'};
+  MP_ROOM = {kind: r.kind === 'race' ? 'race' : 'free', laps: [1, 2, 3, 5].includes(r.laps) ? r.laps : 2};
   TT_MAP = NET.room.map; TT_RAIN = !!NET.room.rain; TT_TIME = NET.room.tod;
   document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP));
   if (moved) netNote(`The host moved the room to ${netMapName(TT_MAP)}. Back to the garage to follow.`);
@@ -13005,6 +13039,7 @@ function netPoseIn(id, m) {
   const now = netNow(), lag = now - m.t;
   P.off = P.off === null || lag < P.off ? lag : P.off + Math.min(0.02, lag - P.off) * 0.05;   // the clocks' difference, tracking the quickest arrival
   P.last = now; P.car = m.car; P.map = String(m.map); P.paint = /^#[0-9a-f]{6}$/i.test(m.paint) ? m.paint : CARS[m.car].paint;
+  if (num(m.p)) P.prog = m.p;   // (in a race: how far round, for the positions)
   P.buf.push({t: m.t, x: m.x, y: m.y, h: m.h, v: num(m.v) ? m.v : 0, z: num(m.z) ? m.z : 0, a: num(m.a) ? m.a : 0});
   if (P.buf.length > 40) P.buf.shift();
 }
@@ -13023,7 +13058,9 @@ function netPoseAt(P) {
   return {x: a.x + (c.x - a.x) * k, y: a.y + (c.y - a.y) * k, h: a.h + wrapA(c.h - a.h) * k, z: a.z + (c.z - a.z) * k, a: a.a + (c.a - a.a) * k};
 }
 // Each frame: in a Test Track drive, send where you are NET_HZ times a second
-const netDriving = () => !SHOWCASE && $('garage').hidden && $('career').hidden && !CAREER_CAR && LESSON === null && RACE === null && !S.finished && !PAUSED;
+// (in an online race you keep sending while paused or after the flag, so the others still see your car)
+const netDriving = () => !SHOWCASE && $('garage').hidden && $('career').hidden && !CAREER_CAR && LESSON === null && RACE === null && ((!S.finished && !PAUSED) || mpRacing());
+const mpRacing = () => !!(MP_RACE && EVT === -1 && RX && RX.ev && RX.ev.mp);
 function netTick() {
   if (!netOn() || !netDriving()) return;
   const now = netNow();
@@ -13032,6 +13069,7 @@ function netTick() {
   const r2 = v => Math.round(v * 100) / 100;
   const m = {k: 'p', t: +now.toFixed(3), x: r2(S.x), y: r2(S.y), h: +S.h.toFixed(3), v: r2(S.v), z: S.aloft ? r2(S.hz) : 0, a: S.aloft ? +S.airGu.toFixed(3) : 0,
     car: TT_USED ? TT_USED.id : CFG.body, paint: CFG.paint, map: MAP_KIND};
+  if (mpRacing()) m.p = Math.round(RX.done !== null ? RX.target + 1 : RX.prog);
   if (NET.host) { m.id = 'h'; netAll('pose', m); } else for (const L of Object.values(NET.links)) netSendTo(L, 'pose', m);
 }
 // The other players on this map: drawn solid, in their own cars and paint
@@ -13072,6 +13110,72 @@ function drawNetTags() {
   }
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 }
+
+// ---- Online races ----
+// In a race room each player picks a car (mpPick: a car card's button picks instead of driving); the host's Start race
+// sends everyone the grid (who has a car, in the host's order) and the moment the lights go out, a few seconds ahead
+// on the host's clock. Joiners turn it into their own clock with the difference measured by pings (NET.clockOff), and
+// the race clock runs from that moment (eventTick), so everyone's lights change together. It is the usual race code:
+// checkpoints, laps, jump starts and penalties; positions come from everyone's progress round the course (sent with
+// their positions) and the finishing times each player reports (fin). The results fill in as players finish.
+function mpSendCtl(m) { if (!netOn()) return; if (NET.host) netAll('ctl', Object.assign({id: 'h'}, m)); else for (const L of Object.values(NET.links)) netSendTo(L, 'ctl', m); }
+function mpPick(id) {
+  NET.myCar = id; mpSendCtl({k: 'car', car: id}); renderNet();
+  const b = $('netBox'); if (b.scrollIntoView) b.scrollIntoView({block: 'center', behavior: 'smooth'});
+}
+function mpHostStart() {
+  if (!netOn() || !NET.host || !NET.myCar || MP_ROOM.kind !== 'race') return;
+  const grid = [{id: 'h', name: netName(), car: NET.myCar}].concat(Object.values(NET.peers).filter(P => P.pick).map(P => ({id: P.id, name: P.name, car: P.pick})));
+  const m = {k: 'start', goAt: netNow() + 6, grid, map: TT_MAP, laps: MP_ROOM.laps, rain: TT_RAIN ? 1 : 0, tod: TT_TIME};
+  netAll('ctl', m); mpStart(m);
+}
+function mpStart(m) {
+  if (!Array.isArray(m.grid) || !document.querySelector(`#mapPick [data-map="${m.map}"]`) || !LOOP_MAPS.includes(m.map)) return;
+  const grid = m.grid.filter(g => g && g.id && CARS[g.car]).slice(0, NET_MAX).map(g => ({id: String(g.id), name: String(g.name || 'Driver').slice(0, 24), car: g.car}));
+  const mine = grid.find(g => g.id === NET.me);
+  if (!mine) { netNote('A race started without you: pick a car before the host starts.'); if (!$('garage').hidden) { NET.err2 = 'A race started without you. Pick a car so you are in the next one.'; renderNet(); } return; }
+  MP_RACE = {grid, map: m.map, laps: [1, 2, 3, 5].includes(m.laps) ? m.laps : 2, rain: m.rain ? 1 : 0, tod: TOD[m.tod] ? m.tod : 'day', goAt: +m.goAt - (NET.host ? 0 : NET.clockOff || 0), fin: {}, me: NET.me};
+  TT_MAP = MP_RACE.map; TT_RAIN = !!MP_RACE.rain; TT_TIME = MP_RACE.tod;
+  LESSON = null; CAREER_CAR = null; RACE = null; GHOST_RACE = false; EVT = -1;
+  const keep = MP_RACE; chooseCar(mine.car); MP_RACE = keep;
+}
+// Everyone in the race, in order: finishers by time, then the rest by how far round they are (a player who has gone
+// quiet for 6 s, or left the room, has retired)
+function mpStandings() {
+  const R = MP_RACE, now = netNow(), peers = NET ? NET.peers : {};   // (if the room is lost mid-race, the others count as retired)
+  const rows = R.grid.map(g => {
+    if (g.id === R.me) return {g, me: true, fin: R.fin[g.id] ?? (RX && RX.done !== null ? RX.done : null), prog: RX ? RX.prog : 0, out: false};
+    const P = peers[g.id];
+    return {g, fin: R.fin[g.id] ?? null, prog: P && P.prog !== undefined ? P.prog : 0, out: !P || (RX && RX.t > 8 && now - P.last > 6 && R.fin[g.id] === undefined)};
+  });
+  return rows.sort((a, b) => (a.out - b.out) || ((a.fin === null) - (b.fin === null)) || (a.fin !== null ? a.fin - b.fin : b.prog - a.prog));
+}
+function mpFin(id, t) {
+  if (!MP_RACE) return;
+  MP_RACE.fin[id] = t;
+  const g = MP_RACE.grid.find(q => q.id === id);
+  if (g && id !== MP_RACE.me && RX && RX.done === null) log(`${g.name} finished: ${fmtRun(t)}.`);
+  if (RX && RX.done !== null && mpRacing()) mpResults();
+}
+function finishMpRace() {
+  S.nos = false; S.finished = true; RX.done = RX.t + RX.jump + (RX.pen || 0); bigMsg('');
+  MP_RACE.fin[MP_RACE.me] = RX.done; mpSendCtl({k: 'fin', time: +RX.done.toFixed(3)});
+  mpResults();
+}
+function mpResults() {
+  const st = mpStandings(), me = st.findIndex(r => r.me) + 1, lead = st[0] && st[0].fin;
+  const lapOf = r => Math.min(RX.laps, Math.max(1, Math.floor(r.prog / RX.L) + 1));
+  const rows = st.map((r, k) => `<tr${r.me ? ' style="color:var(--accent)"' : ''}><td>${r.out ? '-' : ordinal(k + 1)}</td><td>${netEsc(r.g.name)}${r.me ? ' (you)' : ''}<br><small style="color:var(--dim)">${netEsc(carLabel(r.g.car))}</small></td>
+    <td style="text-align:right">${r.fin !== null ? (k === 0 || lead === null ? fmtRun(r.fin) : '+' + (r.fin - lead).toFixed(2) + ' s') : r.out ? 'retired' : `racing, lap ${lapOf(r)}`}</td></tr>`).join('');
+  const waiting = st.some(r => r.fin === null && !r.out);
+  $('overlay').querySelector('.lbl').textContent = 'Multiplayer';
+  showOverlay(me === 1 ? 'You win!' : `You finished ${ordinal(me)}`,
+    `<table class="cr-table" style="margin-bottom:10px">${rows}</table>
+     <p>${fmtRun(RX.done)}${RX.jump ? ' · includes 3 s for the jump start' : ''}${RX.pen ? ` · includes ${RX.pen.toFixed(1)} s off the course` : ''}</p>
+     ${waiting ? '<p style="color:var(--dim)">Waiting for the others to finish…</p>' : ''}`,
+    'Back to the room', () => showGarage());
+}
+setInterval(() => { if (mpRacing() && RX.done !== null && $('garage').hidden) mpResults(); }, 1500);   // (the "racing, lap n" rows and retirements)
 // The garage's Online panel
 function renderNet() {
   const box = $('netBox');
@@ -13091,17 +13195,30 @@ function renderNet() {
     box.innerHTML = `<div class="net-row"><span>${NET.host ? 'Opening a room…' : `Joining room <b>${netEsc(NET.code)}</b>…`}</span><button type="button" class="tt-btn" data-net="leave">Cancel</button></div>`;
     return;
   }
-  const others = Object.values(NET.peers);
+  const others = Object.values(NET.peers), race = MP_ROOM.kind === 'race';
   const row = (name, P, you) => {
-    const where = P ? (netNow() - P.last < 2 && CARS[P.car] ? `${carLabel(P.car)} · ${netMapName(P.map)}` : 'in the garage') : '';
+    const pick = you ? NET.myCar : P && P.pick;
+    const where = race ? (pick ? carLabel(pick) : 'choosing a car') : P ? (netNow() - P.last < 2 && CARS[P.car] ? `${carLabel(P.car)} · ${netMapName(P.map)}` : 'in the garage') : '';
     return `<li><b>${netEsc(name)}</b>${you ? ' (you)' : ''}${where ? ` <span>${netEsc(where)}</span>` : ''}</li>`;
   };
   const me = row(netName(), null, true);
   const list = (NET.host ? [me] : [row((NET.peers.h || {}).name || 'Host', NET.peers.h), me]).concat(others.filter(P => P.id !== 'h').map(P => row(P.name, P))).join('');
+  const seg = (attr, cur, opts) => opts.map(([v, t]) => `<button type="button" data-net="${attr}:${v}" class="${String(cur) === String(v) ? 'on' : ''}">${t}</button>`).join('');
+  const kind = NET.host
+    ? `<div class="seg net-kind" role="group" aria-label="Room"><span>Room</span>${seg('kind', MP_ROOM.kind, [['free', 'Free roam'], ['race', 'Race']])}</div>
+       ${race ? `<div class="seg net-kind" role="group" aria-label="Laps"><span>Laps</span>${seg('laps', MP_ROOM.laps, [[1, '1'], [2, '2'], [3, '3'], [5, '5']])}</div>` : ''}`
+    : '';
+  const racers = 1 + others.filter(P => P.pick).length, waitFor = others.filter(P => !P.pick).length;
+  const what = race
+    ? (NET.myCar ? `Your car: <b>${netEsc(carLabel(NET.myCar))}</b>. Pick another below to change it.` : '<b>Pick your car below</b> to be on the grid.')
+      + (NET.host ? '' : ` The host starts the race: ${netEsc(netMapName(TT_MAP))}, ${MP_ROOM.laps} ${MP_ROOM.laps === 1 ? 'lap' : 'laps'}${TT_RAIN ? ', rain' : ''}.`)
+    : (NET.host ? 'Everyone picks a car below and drives on your track, wherever they like.' : `Free roam on <b>${netEsc(netMapName(TT_MAP))}</b>${TT_RAIN ? ', rain' : ''}: pick a car below and drive.`);
+  const start = NET.host && race ? `<div class="net-start"><button type="button" class="tt-btn" data-net="start" ${NET.myCar ? '' : 'disabled'}>Start race (${racers} ${racers === 1 ? 'car' : 'cars'})</button>
+      ${!NET.myCar ? '<span class="tt-hint"> Pick your own car first.</span>' : waitFor ? `<span class="tt-hint"> ${waitFor} still choosing: they sit this one out if you start now.</span>` : ''}</div>` : '';
   box.innerHTML = `<div class="net-room"><div class="net-row"><span>Room code <b class="net-code">${netEsc(NET.code)}</b></span><button type="button" class="tt-btn" data-net="leave">Leave</button></div>
-    <p class="tt-hint">${NET.host ? `Give your friends this code. You pick the track, weather and time for everyone. ${others.length ? '' : 'Nobody has joined yet.'}`
-      : `The host picks the track: <b>${netEsc(netMapName(TT_MAP))}</b>${TT_RAIN ? ', rain' : ''}, ${netEsc(TT_TIME)}.`} Pick a car below to drive.</p>
-    <ul class="net-list">${list}</ul></div>`;
+    ${NET.host ? `<p class="tt-hint">Give your friends this code. You pick the track, weather and time for everyone.${others.length ? '' : ' Nobody has joined yet.'}</p>` : ''}
+    ${kind}<p class="tt-hint">${what}</p>${NET.err2 ? `<p class="tt-hint" style="color:var(--bad)">${netEsc(NET.err2)}</p>` : ''}
+    <ul class="net-list">${list}</ul>${start}</div>`;
 }
 $('netBox').addEventListener('click', e => {
   const b = e.target.closest('[data-net]');
@@ -13109,6 +13226,9 @@ $('netBox').addEventListener('click', e => {
   if (b.dataset.net === 'host') netHost();
   else if (b.dataset.net === 'join') netJoin($('netCode').value);
   else if (b.dataset.net === 'leave') netLeave();
+  else if (b.dataset.net === 'start') { NET.err2 = ''; mpHostStart(); }
+  else if (b.dataset.net.startsWith('kind:') && NET && NET.host) { MP_ROOM.kind = b.dataset.net.slice(5); updateTTSetup(); renderNet(); }
+  else if (b.dataset.net.startsWith('laps:') && NET && NET.host) { MP_ROOM.laps = Number(b.dataset.net.slice(5)); netRoomSend(); renderNet(); }
 });
 $('netBox').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'netCode') netJoin(e.target.value); });
 $('netName').value = SETTINGS.driverName || '';
@@ -13682,6 +13802,10 @@ function startEvent(i) {
     const k = ais.length, sp = roadside(L - 9 - 7 * k, k % 2 ? 2.2 : -2.2);
     RX.grid = {x: sp.x, y: sp.y, h: Math.atan2(sp.dy, sp.dx)};
   }
+  if (ev.mp) {   // an online race: the grid in the host's order, two by two
+    const k = Math.max(0, MP_RACE.grid.findIndex(g => g.id === MP_RACE.me)), sp = roadside(L - 9 - 7 * k, k % 2 ? 2.2 : -2.2);
+    RX.grid = {x: sp.x, y: sp.y, h: Math.atan2(sp.dy, sp.dx)};
+  }
   Object.assign(S, {x: RX.grid.x, y: RX.grid.y, h: RX.grid.h});
   RX.lastU = strip ? 0 : nearestArc(S.x, S.y);
   if (ev.ghostRun) { RX.rec = {x: [], y: [], h: [], p: [], z: [], a: [], l: [], t: [], w: []}; RX.lapTimes = []; RX.ghost = GHOST_RACE ? GHOST : null; }
@@ -13689,6 +13813,7 @@ function startEvent(i) {
   renderEventHud();
   $('overlay').querySelector('.lbl').textContent = ev.series.name;
   const go = () => { $('overlay').hidden = true; Object.assign(S, {x: RX.grid.x, y: RX.grid.y, h: RX.grid.h, v: 0, vy: 0, r: 0, ww: 0}); RX.armed = true; RX.t = -3.6; };
+  if (ev.mp) { $('overlay').hidden = true; RX.armed = true; RX.t = netNow() - MP_RACE.goAt; log(`${mapLabel(ev)}, ${ev.laps} ${ev.laps === 1 ? 'lap' : 'laps'}. Engine running: clutch in, first gear, go on green.`); return; }   // (everyone's lights go out together)
   if (ev.ghostRun) return showOverlay(ev.name, ghostBriefing(ev), 'Line up', go);
   if (ev.ttStreet) return showOverlay(ev.name, `<p>${mapLabel(ev)}, against ${ais.map(a => `${a.name} (${a.r.year} ${a.r.name})`).join(', ')}.</p>
     ${ev.map === 'night' || ev.map === 'nightR' ? '<p><b>The traffic is real and it is not paying attention.</b> It runs both ways, changes lanes when it likes and stops for no reason. Stay out of the oncoming lanes unless they are clear.</p>' : ''}
@@ -13714,6 +13839,15 @@ function playerPos() {
 function renderEventHud() {
   // RX.lap is -1 on the grid (behind the line) and 0 once you cross it, so the lap you are on is RX.lap + 1
   const n = RX.ais.length + 1, lapNow = Math.min(RX.laps, Math.max(1, RX.lap + 1));
+  if (RX.ev.mp) {
+    const st = mpStandings(), me = st.findIndex(r => r.me) + 1;
+    $('checkList').innerHTML = [
+      `<li class="now"><span class="m">▸</span><span>Position <b>${me} / ${st.length}</b></span></li>`,
+      `<li><span class="m">·</span><span>Lap ${lapNow} / ${RX.laps} · checkpoint ${RX.lap < 0 ? 0 : RX.cpNext} / 3</span></li>`,
+      `<li><span class="m">·</span><span>Time ${RX.t > 0 ? fmtClock(RX.t) + '.' + Math.floor(RX.t * 10 % 10) : '0:00.0'}${RX.jump ? ' (+3 s)' : ''}${RX.pen ? ` (+${RX.pen.toFixed(1)} s off course)` : ''}</span></li>`
+    ].join('');
+    return;
+  }
   if (RX.ev.ghostRun) {
     const gap = RX.ghost && RX.t > 0 ? ghostGap() : null;
     $('checkList').innerHTML = [
@@ -13744,7 +13878,7 @@ function bigMsg(text, col) { const b = $('bigMsg'); b.textContent = text; b.styl
 // Every frame of a race: the lights, your progress, the AI field, contact, and the finish
 function eventTick(dt) {
   if (!$('career').hidden || !RX.armed) return;
-  RX.t += dt;
+  if (RX.ev.mp) RX.t = netNow() - MP_RACE.goAt; else RX.t += dt;   // (online: the shared clock, so a slow frame never puts you behind)
   // The lights: three reds, then green
   if (RX.t > 0 && RX.fuel0 === undefined) RX.fuel0 = S.fuelUsed;   // fuel counts from the green light
   if (RX.t < 0) bigMsg(String(Math.ceil(-RX.t)), '#e2552f');
@@ -13895,6 +14029,7 @@ function finishStreetRun() {
   $('stGarage').onclick = () => showGarage();
 }
 function finishEvent() {
+  if (RX.ev.mp) return finishMpRace();
   if (RX.ev.ghostRun) return finishTimedRun();
   if (RX.ev.eco) return finishEco();
   if (RX.ev.ttStreet) return finishStreetRun();
@@ -14803,6 +14938,7 @@ for (const [id, car] of Object.entries(CARS)) {
   $('spec-' + id).innerHTML = car.specs.map(s => `<li>${kt(s)}</li>`).join('');
 }
 document.querySelectorAll('[data-car]').forEach(b => b.addEventListener('click', () => {
+  if (MP && netOn() && MP_ROOM.kind === 'race') { mpPick(b.dataset.car); return; }
   GHOST_RACE = TT_MODE === 'ghost' && !!GHOST;   // in ghost mode, a car from the list races the loaded ghost
   EVT = GHOST_RACE || (ttRunOn() && TT_MODE !== 'online') ? -1 : null; chooseCar(b.dataset.car);   // (online is a free drive)
 }));
