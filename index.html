@@ -229,6 +229,15 @@ body.on-title #stats,body.on-title #dash,body.on-title #pedals,body.on-title #lo
 .tt-carbar .makePick button{padding:3px 10px 3px 4px;font-size:12px;gap:6px}
 .tt-carbar .makePick button svg{width:22px;height:22px}
 #ghostInfo{margin-top:10px}
+#netBox{margin-top:10px}
+.net-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+.net-row .net-or{color:var(--dim);font-size:12.5px}
+#netCode{width:6.5em;text-transform:uppercase;letter-spacing:.2em;font:inherit;font-weight:700;padding:6px 8px;background:var(--panel);color:inherit;border:1px solid var(--line);border-radius:3px}
+.net-room{border:1px solid var(--accent);border-radius:3px;padding:10px 12px;background:rgba(240,169,58,.06)}
+.net-code{font-size:20px;letter-spacing:.18em;color:var(--accent)}
+.net-list{list-style:none;margin:6px 0 0;padding:0;font-size:13px}
+.net-list li{padding:3px 0;border-top:1px solid var(--line)}
+.net-list li span{color:var(--dim);font-size:12px}
 #ghostInfo:empty{display:none}
 #drvName{background:var(--bg,#1a1611);border:1px solid var(--line);color:var(--ink);font:inherit;padding:6px 10px;border-radius:3px;width:180px}
 #ghostInfo{border:1px solid var(--accent);border-radius:3px;padding:10px 12px;margin:0 0 14px;background:rgba(240,169,58,.06)}
@@ -482,7 +491,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
         <div class="seg" id="todPick" role="group" aria-label="Time of day" style="margin-top:10px"><span>Time</span><button type="button" data-tod="morning">Morning</button><button type="button" data-tod="day" class="on">Day</button><button type="button" data-tod="evening">Evening</button><button type="button" data-tod="night">Night</button></div>
         <p class="tt-hint" id="todHint"></p></div>
       <div><h3 class="tt-h"><b>3</b>Mode</h3>
-        <div class="seg" id="modePick" role="group" aria-label="Mode"><button type="button" data-mode="free" class="on">Free drive</button><button type="button" data-mode="timed">Timed run</button><button type="button" data-mode="street">Race</button><button type="button" data-mode="ghost">Race a ghost</button></div>
+        <div class="seg" id="modePick" role="group" aria-label="Mode"><button type="button" data-mode="free" class="on">Free drive</button><button type="button" data-mode="timed">Timed run</button><button type="button" data-mode="street">Race</button><button type="button" data-mode="ghost">Race a ghost</button><button type="button" data-mode="online">Online</button></div>
         <div class="tt-mode" data-for="free"><p class="tt-hint">No clock and no laps: take any car anywhere.</p></div>
         <div class="tt-mode" data-for="timed" hidden>
           <div class="seg" id="runPick" role="group" aria-label="Laps" style="margin-top:10px"><span>Laps</span><button type="button" data-laps="1" class="on">1</button><button type="button" data-laps="2">2</button><button type="button" data-laps="3">3</button><button type="button" data-laps="5">5</button></div>
@@ -498,6 +507,11 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
           <button type="button" id="ghostLoadBtn" class="tt-btn">Load ghost file…</button>
           <input type="file" id="ghostFile" accept=".json,application/json" hidden>
           <div id="ghostInfo"></div>
+        </div>
+        <div class="tt-mode" data-for="online" hidden>
+          <p class="tt-hint">Drive with friends over the internet. One of you hosts a room and shares its four-letter code; the others join with it. Everyone picks their own car and drives freely on the host's track, seeing each other's cars live. Cars pass through each other: no crashes.</p>
+          <label class="tt-name">Your name <input type="text" id="netName" maxlength="24" placeholder="Driver" aria-label="Your name, shown over your car online"></label>
+          <div id="netBox"></div>
         </div>
       </div>
     </section>
@@ -9373,6 +9387,7 @@ function draw(dt) {
   } else if (VIEW !== 'cockpit') { if (GLC.on) glcItem(items, dist(S.x, S.y), S.x, S.y, drawPlayerCar); else items.push({d: 9, fn: drawPlayerCar}); }
   if (!SHOWCASE && RACE !== null) addRaceItems(items, dist);
   if (!SHOWCASE && EVT !== null) addEventItems(items, dist);
+  if (!SHOWCASE) addNetItems(items, dist);   // online: the other players' cars
   if (!SHOWCASE) addExhaustItems(items, dist);
   if (MAP_KIND === 'suburb' && !glS) addSuburbItems(items, dist);
   if (MAP_KIND === 'city' && !glS) addCityItems(items, dist);
@@ -9399,6 +9414,7 @@ function draw(dt) {
   if (S.rain && !SHOWCASE && !(isNightMap() && nightCover(CAMX, CAMY) === 2)) drawRain(dt);
   else if (isForestMap() && !SHOWCASE) drawLeaves(dt);   // autumn leaves drifting down
   drawTodGrade();   // time of day: the colored light over everything in the world
+  drawNetTags();    // online: names over the other players' cars
   if (rolled) { ctx.restore(); VIEW_PAD = 0; }   // the cab, gauges and overlays are not rolled
   const vig = ctx.createRadialGradient(VW / 2, VH * 0.5, VH * 0.3, VW / 2, VH * 0.5, VW * 0.7);
   vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.45)');
@@ -10741,6 +10757,10 @@ function reset() {
   if (TT_MAP === 'lot') { S.x = 12; S.y = 8; S.h = 0; }   // free drive on the lot starts on the long south lane
   if (TT_MAP === 'suburb') { S.x = 262; S.y = 202; S.h = 0; }   // Maple Grove: outside Gino's on Elm St
   if (TT_MAP === 'city') { S.x = 312; S.y = 2 * CITY_GAP + 2; S.h = 0; }   // downtown: outside Gino's on Main St
+  if (netOn() && NET.me && NET.me !== 'h') {   // online: each joiner starts a few car lengths behind the host, staggered
+    const k = Number(NET.me.slice(1)) || 1, back = 8 * k, side = k % 2 ? -2 : 2;
+    S.x -= Math.cos(S.h) * back + Math.sin(S.h) * side; S.y -= Math.sin(S.h) * back - Math.cos(S.h) * side;
+  }
   camS = null;
   $('check').hidden = true;
   THR_HOLD = null; CLU_HOLD = null;
@@ -11099,6 +11119,7 @@ function frame(now) {
     if (EVT !== null && !S.finished) eventTick(dt);
     if (CAREER_CAR) careerTick(dt);
   }
+  netTick();   // online: send where you are
   draw(dt); if (PIXEL()) pixelPass();
   hud(); updateAudio();
   requestAnimationFrame(frame);
@@ -11123,7 +11144,7 @@ function showGarage() {
   $('check').hidden = true;
   $('career').hidden = true;
   buildModLists(); applyGarageLocks();   // the career may have unlocked more since last time
-  renderGhostInfo(); updateTTSetup();
+  renderGhostInfo(); renderNet(); updateTTSetup();
   $('garage').hidden = false;
 }
 function showTitle() {
@@ -12501,6 +12522,11 @@ function drawRaceMap(free) {
     ctx.fillStyle = ai.paint || '#c9c4b8'; ctx.strokeStyle = '#0e0c0a'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(d[0], d[1], 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
+  for (const [N, o] of netVisible()) {   // online players: a dot in their paint, ringed white
+    const d = P(o.x, o.y);
+    ctx.fillStyle = N.paint || '#c9c4b8'; ctx.strokeStyle = '#f4efe4'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(d[0], d[1], 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
   const q = P(S.x, S.y), c = Math.cos(S.h), sn = Math.sin(S.h);
   ctx.fillStyle = '#f0a93a'; ctx.strokeStyle = '#0e0c0a'; ctx.lineWidth = 1.5; ctx.beginPath();
   ctx.moveTo(q[0] + c * 8, q[1] + sn * 8); ctx.lineTo(q[0] - c * 5 - sn * 5, q[1] - sn * 5 + c * 5); ctx.lineTo(q[0] - c * 5 + sn * 5, q[1] - sn * 5 - c * 5);
@@ -12642,30 +12668,33 @@ function updateTTSetup() {
   document.querySelectorAll('#modePick [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === TT_MODE));
   document.querySelectorAll('.tt-mode').forEach(d => { d.hidden = d.dataset.for !== TT_MODE; });
   document.querySelectorAll('#wxPick [data-wx]').forEach(b => b.classList.toggle('on', (b.dataset.wx === 'rain') === TT_RAIN));
-  const timed = TT_MODE === 'timed', ghost = TT_MODE === 'ghost', street = TT_MODE === 'street';
+  const timed = TT_MODE === 'timed', street = TT_MODE === 'street';
+  // ghost: the ghost picks the track, weather and time; joined to someone else's online room, the host does
+  const joined = TT_MODE === 'online' && NET && NET.status === 'on' && !NET.host, ghost = TT_MODE === 'ghost' || joined;
   if ((timed || street) && !LOOP_MAPS.includes(TT_MAP)) { TT_MAP = 'circuit'; document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP)); }
   document.querySelectorAll('#mapPick [data-map]').forEach(b => { const off = ((timed || street) && !LOOP_MAPS.includes(b.dataset.map)) || ghost; b.classList.toggle('off', off); b.title = off ? (ghost ? 'The ghost picks the track' : street ? 'Races need a loop track' : 'Timed runs need a loop track') : ''; });
   document.querySelectorAll('#wxPick button').forEach(b => { b.classList.toggle('off', ghost); });
   // Time of day: the ghost picks it too; Midnight City is always night
   const fixedTime = ghost || TT_MAP === 'night' || TT_MAP === 'nightR' || TT_MAP === 'freeway';
   document.querySelectorAll('#todPick [data-tod]').forEach(b => { b.classList.toggle('on', b.dataset.tod === TT_TIME && !fixedTime); b.classList.toggle('off', fixedTime); });
-  $('todHint').textContent = ghost ? 'The ghost picks the time of day.' : fixedTime ? 'Midnight City and the freeway are always night.' : TOD[TT_TIME].hint;
-  $('mapHint').textContent = ghost ? 'The ghost picks the track.' : street ? 'Races need a loop track: the training lot is the smallest, the towns are free drive only.' : timed ? 'Timed runs and ghosts need a loop track: the training lot and the towns are free drive only.' : '';
+  $('todHint').textContent = joined ? 'The host picks the time of day.' : ghost ? 'The ghost picks the time of day.' : fixedTime ? 'Midnight City and the freeway are always night.' : TOD[TT_TIME].hint;
+  $('mapHint').textContent = joined ? 'The host picks the track.' : ghost ? 'The ghost picks the track.' : street ? 'Races need a loop track: the training lot is the smallest, the towns are free drive only.' : timed ? 'Timed runs and ghosts need a loop track: the training lot and the towns are free drive only.' : '';
   $('mapHint').hidden = !$('mapHint').textContent;
   const pass = TT_MAP === 'pass';
-  $('wxHint').textContent = ghost ? 'The ghost picks the weather.' : TT_RAIN ? (pass ? 'Snow on the mountain pass: about half the grip on road tires. Off-road tires bite best; sport tires and slicks slide.' : 'About a quarter less grip and longer stops. Slicks are treacherous.') : (pass ? 'Rain falls as snow up on the mountain pass.' : 'Clear skies.');
+  $('wxHint').textContent = joined ? 'The host picks the weather.' : ghost ? 'The ghost picks the weather.' : TT_RAIN ? (pass ? 'Snow on the mountain pass: about half the grip on road tires. Off-road tires bite best; sport tires and slicks slide.' : 'About a quarter less grip and longer stops. Slicks are treacherous.') : (pass ? 'Rain falls as snow up on the mountain pass.' : 'Clear skies.');
   // In a ghost race the car list stays: by default you race in the ghost's own car (the Race the ghost button), but any
   // car below can race it instead, with your own Test Track setup. Hidden until a ghost is loaded.
-  const noCars = ghost && !GHOST;
+  const noCars = TT_MODE === 'ghost' && !GHOST;
+  netRoomSend();   // hosting online: tell the room about a new track, weather or time
   for (const id of ['carHead', 'carBar']) $(id).hidden = noCars;
   document.querySelector('#garage .cars').hidden = noCars;
 }
 $('modePick').addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (b) { TT_MODE = b.dataset.mode; updateTTSetup(); } });
-$('wxPick').addEventListener('click', e => { const b = e.target.closest('[data-wx]'); if (b && TT_MODE !== 'ghost') { TT_RAIN = b.dataset.wx === 'rain'; updateTTSetup(); } });
-$('todPick').addEventListener('click', e => { const b = e.target.closest('[data-tod]'); if (b && TT_MODE !== 'ghost') { TT_TIME = b.dataset.tod; updateTTSetup(); } });
+$('wxPick').addEventListener('click', e => { const b = e.target.closest('[data-wx]'); if (b && !b.classList.contains('off')) { TT_RAIN = b.dataset.wx === 'rain'; updateTTSetup(); } });
+$('todPick').addEventListener('click', e => { const b = e.target.closest('[data-tod]'); if (b && !b.classList.contains('off')) { TT_TIME = b.dataset.tod; updateTTSetup(); } });
 $('ghostLoadBtn').addEventListener('click', () => $('ghostFile').click());
 $('drvName').value = SETTINGS.driverName || '';
-$('drvName').addEventListener('input', e => { SETTINGS.driverName = e.target.value.trim().slice(0, 24); saveSettings(); });
+$('drvName').addEventListener('input', e => { SETTINGS.driverName = e.target.value.trim().slice(0, 24); saveSettings(); $('netName').value = SETTINGS.driverName; });
 $('ghostFile').addEventListener('change', e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
@@ -12678,6 +12707,313 @@ $('ghostInfo').addEventListener('click', e => {
   if (b.dataset.gh === 'clear') { GHOST = null; renderGhostInfo(); }
   else if (b.dataset.gh === 'race' && GHOST) { GHOST_RACE = true; EVT = -1; chooseCar(GHOST.car); }
 });
+/* ---------- Online play: drive together, peer to peer ---------- */
+// No server of our own. One player hosts a room and gets a four-letter code; friends type it in to join. The browsers
+// find each other through PeerJS's free public broker (a WebSocket that only passes the connection offers along, by
+// id: the host registers as NET_PREFIX + code), then talk directly over WebRTC data channels. The host is the hub:
+// every joiner connects to the host, and the host passes each player's position on to everyone else (up to NET_MAX
+// players in all). Each browser simulates only its own car; the others are drawn where their owners say they are,
+// like live ghosts (they pass through you: no contact). Positions go 15 times a second over an unordered channel
+// that never resends (a late position is useless); everything else (names, the room's track) over a reliable one.
+// The host picks the track, weather and time of day; joiners follow. Some networks block direct connections, and
+// without a relay (TURN) server those players cannot connect: the join times out with a message saying so.
+const NET_BROKER = 'wss://0.peerjs.com/peerjs?key=peerjs', NET_PREFIX = 'pickuptrial-', NET_MAX = 6, NET_HZ = 15, NET_DELAY = 0.12;
+const NET_ICE = [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}];
+const NET_CODES = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+var NET = null;   // (var: the garage code reads it before this block runs) {host, code, ws, me, peers: {id: player}, links: {brokerId: link}, status, err, room, sendT, beat}
+const netNow = () => performance.now() / 1000;
+const netEsc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const netName = () => (SETTINGS.driverName || '').trim().slice(0, 24) || 'Driver';
+const netMapName = m => { const b = document.querySelector(`#mapPick [data-map="${m}"]`); return b ? b.textContent.trim() : m; };
+const netRand = n => Array.from({length: n}, () => NET_CODES[Math.floor(Math.random() * NET_CODES.length)]).join('');
+// The broker: a WebSocket that relays OFFER / ANSWER / CANDIDATE messages to another id, with a heartbeat to stay open
+function netBroker(id, onMsg) {
+  const ws = new WebSocket(`${NET_BROKER}&id=${encodeURIComponent(id)}&token=${netRand(11).toLowerCase()}&version=1.5.4`);
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } onMsg(m); };
+  ws.onerror = () => { if (NET && NET.ws === ws && NET.status !== 'on') netFail('Could not reach the matchmaking server. Check your internet connection.'); };
+  ws.onclose = () => { if (NET && NET.ws === ws) { clearInterval(NET.beat); NET.ws = null; if (NET.status === 'wait') netFail('The matchmaking server closed the connection.'); } };
+  NET.beat = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({type: 'HEARTBEAT'})); }, 5000);
+  return ws;
+}
+// The public broker checks that messages look like the PeerJS client's own (a real SDP, and these fields with it), and
+// drops the connection otherwise, so every message carries them. If joining ever stops working, compare with what the
+// PeerJS 1.5.4 client sends.
+function netSignal(type, dst, payload) {
+  if (!NET || !NET.ws || NET.ws.readyState !== 1) return;
+  const L = NET.links[dst], cid = L ? L.cid : 'dc_' + netRand(11).toLowerCase();
+  NET.ws.send(JSON.stringify({type, payload: Object.assign({type: 'data', connectionId: cid, label: cid, reliable: false, serialization: 'binary', browser: 'chrome'}, payload), dst}));
+}
+// One direct connection (a joiner has one, to the host; the host has one per joiner). Both channels are agreed in
+// advance (negotiated ids), so neither side waits for the other to open them.
+function netLink(remote, cid) {
+  const pc = new RTCPeerConnection({iceServers: NET_ICE});
+  const L = {remote, pc, id: null, queue: [], ready: false, cid: cid || 'dc_' + netRand(11).toLowerCase(),
+    ctl: pc.createDataChannel('ctl', {negotiated: true, id: 0}),
+    pose: pc.createDataChannel('pose', {negotiated: true, id: 1, ordered: false, maxRetransmits: 0})};
+  pc.onicecandidate = e => { if (e.candidate) netSignal('CANDIDATE', remote, {candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate}); };
+  pc.onconnectionstatechange = () => { if (['failed', 'closed'].includes(pc.connectionState)) netDrop(L, pc.connectionState === 'failed' ? 'lost' : 'left'); };
+  L.ctl.onopen = () => netOpened(L);
+  L.ctl.onclose = () => netDrop(L, 'left');
+  L.ctl.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } netCtl(L, m); };
+  L.pose.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } netPoseFrom(L, m); };
+  NET.links[remote] = L;
+  return L;
+}
+const netSendTo = (L, ch, m) => { const c = L[ch]; if (c && c.readyState === 'open') try { c.send(JSON.stringify(m)); } catch (e) { /* closing */ } };
+const netAll = (ch, m, except) => { for (const L of Object.values(NET.links)) if (L.ready && L !== except) netSendTo(L, ch, m); };
+async function netAddCandidate(L, c) {
+  if (!L.pc.remoteDescription) { L.queue.push(c); return; }
+  try { await L.pc.addIceCandidate(c); } catch (e) { /* a stale candidate */ }
+}
+async function netRemoteSet(L, desc) {
+  await L.pc.setRemoteDescription(desc);
+  for (const c of L.queue.splice(0)) await netAddCandidate(L, c);
+}
+// Hosting: register the room's id with the broker and answer every offer that comes in
+function netHost() {
+  netLeave(true);
+  const code = netRand(4);
+  NET = {host: true, code, me: 'h', peers: {}, links: {}, status: 'wait', err: '', sendT: 0, nextId: 1};
+  NET.ws = netBroker(NET_PREFIX + code, async m => {
+    if (!NET || !NET.host) return;
+    if (m.type === 'OPEN') { NET.status = 'on'; renderNet(); netRoomSend(); }
+    else if (m.type === 'ID-TAKEN') { NET.ws.close(); netHost(); }   // someone has that code already: pick another
+    else if (m.type === 'ERROR') netFail('The matchmaking server refused: ' + netEsc((m.payload && m.payload.msg) || 'unknown error'));
+    else if (m.type === 'OFFER' && m.src && m.payload && m.payload.sdp) {
+      if (Object.keys(NET.links).length >= NET_MAX - 1) return;   // full: the joiner times out
+      const L = netLink(m.src, typeof m.payload.connectionId === 'string' ? m.payload.connectionId.slice(0, 40) : null);
+      try { await netRemoteSet(L, m.payload.sdp); const a = await L.pc.createAnswer(); await L.pc.setLocalDescription(a); netSignal('ANSWER', m.src, {sdp: L.pc.localDescription}); }
+      catch (e) { netDrop(L, 'lost'); }
+    } else if (m.type === 'ANSWER') { /* hosts never offer */ }
+    else if (m.type === 'CANDIDATE' && m.src && NET.links[m.src] && m.payload) netAddCandidate(NET.links[m.src], m.payload.candidate);
+  });
+  renderNet();
+}
+// Joining: register a throwaway id, offer a connection to the room's id and wait for the host to answer
+function netJoin(code) {
+  code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 4) { NET = {status: 'off', err: 'A room code has four letters.', peers: {}, links: {}}; renderNet(); return; }
+  netLeave(true);
+  NET = {host: false, code, me: null, peers: {}, links: {}, status: 'wait', err: '', sendT: 0};
+  const hostId = NET_PREFIX + code;
+  NET.ws = netBroker(NET_PREFIX + code + '-' + netRand(8).toLowerCase(), async m => {
+    if (!NET || NET.host) return;
+    if (m.type === 'OPEN') {
+      const L = netLink(hostId);
+      try { const o = await L.pc.createOffer(); await L.pc.setLocalDescription(o); netSignal('OFFER', hostId, {sdp: L.pc.localDescription}); }
+      catch (e) { netFail('Your browser could not set up a connection.'); }
+    } else if (m.type === 'ANSWER' && NET.links[hostId] && m.payload && m.payload.sdp) netRemoteSet(NET.links[hostId], m.payload.sdp).catch(() => netFail('The connection to the host failed.'));
+    else if (m.type === 'CANDIDATE' && NET.links[hostId] && m.payload) netAddCandidate(NET.links[hostId], m.payload.candidate);
+    else if (m.type === 'EXPIRE' || (m.type === 'ERROR' && NET.status === 'wait')) netFail(`No room called ${code} is open. Check the code with the host.`);
+  });
+  NET.timer = setTimeout(() => { if (NET && NET.status === 'wait' && !NET.host) netFail('Could not connect to the host. Check the code; if it is right, one of your networks is blocking direct connections (common on school and office Wi-Fi).'); }, 15000);
+  renderNet();
+}
+function netFail(msg) {
+  const keep = NET && !NET.host ? NET.code : '';
+  netLeave(true);
+  NET = {status: 'off', err: msg, code: keep, peers: {}, links: {}};
+  renderNet();
+}
+function netLeave(quiet) {
+  if (NET) {
+    clearInterval(NET.beat); clearTimeout(NET.timer);
+    for (const L of Object.values(NET.links || {})) { L.dead = true; try { L.pc.close(); } catch (e) { /* closed */ } }
+    if (NET.ws) { const ws = NET.ws; NET.ws = null; try { ws.close(); } catch (e) { /* closed */ } }
+  }
+  NET = null;
+  if (!quiet) renderNet();
+}
+const netOn = () => !!(NET && NET.status === 'on');
+// A direct channel opened. A joiner says hello (its name); the host welcomes it with its player id and the room
+function netOpened(L) {
+  L.ready = true;
+  if (NET.host) return;   // the host waits for the hello
+  clearTimeout(NET.timer);
+  netSendTo(L, 'ctl', {k: 'hi', name: netName()});
+}
+function netDrop(L, why) {
+  if (L.dead || !NET) return;
+  L.dead = true; try { L.pc.close(); } catch (e) { /* closed */ }
+  delete NET.links[L.remote];
+  if (NET.host) {
+    if (L.id && NET.peers[L.id]) { netNote(`${NET.peers[L.id].name} left`); delete NET.peers[L.id]; netAll('ctl', {k: 'leave', id: L.id}); }
+    renderNet();
+  } else netFail(why === 'lost' ? 'Lost the connection to the host.' : 'The host closed the room.');
+}
+// A note during a drive (the log) and in the garage panel
+function netNote(text) { if ($('garage').hidden && typeof log === 'function') log(text); }
+// Players are only ever named in text, escaped; cars, paints and maps are checked against the game's own lists
+const netPlayer = (id, name) => NET.peers[id] || (NET.peers[id] = {id, name: String(name || 'Driver').slice(0, 24), buf: [], off: null, last: 0});
+function netCtl(L, m) {
+  if (!m || typeof m.k !== 'string') return;
+  if (NET.host) {
+    if (m.k === 'hi' && !L.id) {
+      L.id = 'p' + NET.nextId++;
+      const P = netPlayer(L.id, m.name);
+      netSendTo(L, 'ctl', {k: 'welcome', you: L.id, code: NET.code, room: netRoom(), players: [{id: 'h', name: netName()}].concat(Object.values(NET.peers).filter(q => q !== P).map(q => ({id: q.id, name: q.name})))});
+      netAll('ctl', {k: 'join', id: L.id, name: P.name}, L);
+      netNote(`${P.name} joined`); renderNet();
+    } else if (m.k === 'name' && L.id && NET.peers[L.id]) { NET.peers[L.id].name = String(m.name || 'Driver').slice(0, 24); netAll('ctl', {k: 'name', id: L.id, name: NET.peers[L.id].name}, L); renderNet(); }
+    return;
+  }
+  if (m.k === 'welcome') {
+    NET.me = String(m.you); NET.status = 'on';
+    for (const p of m.players || []) if (p && p.id) netPlayer(String(p.id), p.name);
+    netRoomApply(m.room);
+    if (NET.ws) { const ws = NET.ws; NET.ws = null; clearInterval(NET.beat); ws.close(); }   // connected: the broker is no longer needed
+    renderNet();
+  } else if (m.k === 'join' && m.id) { netPlayer(String(m.id), m.name); netNote(`${String(m.name).slice(0, 24)} joined`); renderNet(); }
+  else if (m.k === 'leave' && m.id && NET.peers[m.id]) { netNote(`${NET.peers[m.id].name} left`); delete NET.peers[m.id]; renderNet(); }
+  else if (m.k === 'name' && m.id && NET.peers[m.id]) { NET.peers[m.id].name = String(m.name || 'Driver').slice(0, 24); renderNet(); }
+  else if (m.k === 'room') netRoomApply(m.room);
+}
+// The room: the host's track, weather and time of day
+const netRoom = () => ({map: TT_MAP, rain: TT_RAIN ? 1 : 0, tod: TT_TIME});
+function netRoomSend() {
+  if (!netOn() || !NET.host) return;
+  const r = netRoom(), key = JSON.stringify(r);
+  if (key === NET.roomKey) return;
+  NET.roomKey = key; netAll('ctl', {k: 'room', room: r});
+}
+function netRoomApply(r) {
+  if (!r || !document.querySelector(`#mapPick [data-map="${r.map}"]`)) return;
+  const moved = NET.room && NET.room.map !== r.map;
+  NET.room = {map: r.map, rain: r.rain ? 1 : 0, tod: TOD[r.tod] ? r.tod : 'day'};
+  TT_MAP = NET.room.map; TT_RAIN = !!NET.room.rain; TT_TIME = NET.room.tod;
+  document.querySelectorAll('#mapPick button').forEach(x => x.classList.toggle('on', x.dataset.map === TT_MAP));
+  if (moved) netNote(`The host moved the room to ${netMapName(TT_MAP)}. Back to the garage to follow.`);
+  renderNet();
+}
+// Positions. A sample: sender's clock t, x, y, heading, speed, height over the ground and body slope in the air, the
+// car, its paint and the map it is on. Kept in a short buffer per player and drawn NET_DELAY behind, between samples.
+function netPoseFrom(L, m) {
+  if (!m || m.k !== 'p') return;
+  if (NET.host) { if (!L.id) return; m.id = L.id; netPoseIn(L.id, m); netAll('pose', m, L); }
+  else if (m.id && m.id !== NET.me) netPoseIn(String(m.id), m);
+}
+function netPoseIn(id, m) {
+  const P = NET.peers[id];
+  if (!P) return;
+  const num = v => typeof v === 'number' && isFinite(v);
+  if (![m.t, m.x, m.y, m.h].every(num) || !CARS[m.car]) return;
+  const now = netNow(), lag = now - m.t;
+  P.off = P.off === null || lag < P.off ? lag : P.off + Math.min(0.02, lag - P.off) * 0.05;   // the clocks' difference, tracking the quickest arrival
+  P.last = now; P.car = m.car; P.map = String(m.map); P.paint = /^#[0-9a-f]{6}$/i.test(m.paint) ? m.paint : CARS[m.car].paint;
+  P.buf.push({t: m.t, x: m.x, y: m.y, h: m.h, v: num(m.v) ? m.v : 0, z: num(m.z) ? m.z : 0, a: num(m.a) ? m.a : 0});
+  if (P.buf.length > 40) P.buf.shift();
+}
+function netPoseAt(P) {
+  const b = P.buf;
+  if (!b.length || netNow() - P.last > 2) return null;   // stopped sending (in a menu, or gone)
+  const t = netNow() - P.off - NET_DELAY;
+  let i = b.length - 1;
+  while (i > 0 && b[i].t > t) i--;
+  const a = b[i], c = b[i + 1];
+  if (!c || t < a.t) {   // past the newest sample: carry on along its heading for a moment
+    const dt = Math.max(0, Math.min(0.25, t - a.t));
+    return {x: a.x + Math.cos(a.h) * a.v * dt, y: a.y + Math.sin(a.h) * a.v * dt, h: a.h, z: a.z, a: a.a};
+  }
+  const k = Math.max(0, Math.min(1, (t - a.t) / Math.max(1e-3, c.t - a.t)));
+  return {x: a.x + (c.x - a.x) * k, y: a.y + (c.y - a.y) * k, h: a.h + wrapA(c.h - a.h) * k, z: a.z + (c.z - a.z) * k, a: a.a + (c.a - a.a) * k};
+}
+// Each frame: in a Test Track drive, send where you are NET_HZ times a second
+const netDriving = () => !SHOWCASE && $('garage').hidden && $('career').hidden && !CAREER_CAR && LESSON === null && RACE === null && !S.finished && !PAUSED;
+function netTick() {
+  if (!netOn() || !netDriving()) return;
+  const now = netNow();
+  if (now - NET.sendT < 1 / NET_HZ) return;
+  NET.sendT = now;
+  const r2 = v => Math.round(v * 100) / 100;
+  const m = {k: 'p', t: +now.toFixed(3), x: r2(S.x), y: r2(S.y), h: +S.h.toFixed(3), v: r2(S.v), z: S.aloft ? r2(S.hz) : 0, a: S.aloft ? +S.airGu.toFixed(3) : 0,
+    car: TT_USED ? TT_USED.id : CFG.body, paint: CFG.paint, map: MAP_KIND};
+  if (NET.host) { m.id = 'h'; netAll('pose', m); } else for (const L of Object.values(NET.links)) netSendTo(L, 'pose', m);
+}
+// The other players on this map: drawn solid, in their own cars and paint
+function netVisible() {
+  if (!netOn()) return [];
+  const out = [];
+  for (const P of Object.values(NET.peers)) {
+    if (P.map !== MAP_KIND || !CARS[P.car]) continue;
+    const q = netPoseAt(P);
+    if (q) out.push([P, q]);
+  }
+  return out;
+}
+function addNetItems(items, dist) {
+  for (const [P, q] of netVisible()) {
+    const d = dist(q.x, q.y);
+    if (d < 400 && !(GLC.on ? false : hiddenByTerrain(q.x, q.y))) glcItem(items, d, q.x, q.y, () => {
+      RIDE = q.z > 0.02 ? {oz: elev(q.x, q.y) + q.z, gu: q.a, gv: 0} : null;
+      drawOther(P.car, q.x, q.y, q.h, P.paint); RIDE = null;
+    });
+  }
+}
+// Their names float over their cars (nearer than 250 m, and not behind a hill)
+function drawNetTags() {
+  if (SHOWCASE || !netOn()) return;
+  ctx.font = `600 ${Math.round(12 * Math.max(1, VH / 900))}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  for (const [P, q] of netVisible()) {
+    const d = Math.hypot(q.x - CAMX, q.y - CAMY);
+    if (d > 250 || d < 3 || hiddenByTerrain(q.x, q.y)) continue;
+    const p = proj(q.x, q.y, 2.3 + q.z);
+    if (!p) continue;
+    const w = ctx.measureText(P.name).width + 12, h = Math.round(18 * Math.max(1, VH / 900));
+    ctx.globalAlpha = Math.max(0.35, 1 - d / 300);
+    ctx.fillStyle = 'rgba(14,12,10,0.7)'; ctx.fillRect(p[0] - w / 2, p[1] - h, w, h);
+    ctx.fillStyle = P.paint || '#e8e4da'; ctx.fillRect(p[0] - w / 2, p[1] - 2, w, 2);
+    ctx.fillStyle = '#f4efe4'; ctx.fillText(P.name, p[0], p[1] - 3);
+    ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+// The garage's Online panel
+function renderNet() {
+  const box = $('netBox');
+  if (!box) return;
+  updateTTSetup();
+  // On the claude.ai page (an artifact) the page may not connect to outside servers: online play lives on its own page
+  if (window.claude && typeof window.claude.use === 'function') { box.innerHTML = `<p class="tt-hint">Online play does not work on this page. Play at <a href="${PLAY_URL}" target="_blank" rel="noopener">${PLAY_URL}</a> to host or join a room (its saves are separate: use Settings, Export save to bring your progress).</p>`; return; }
+  if (typeof RTCPeerConnection === 'undefined') { box.innerHTML = '<p class="tt-hint" style="color:var(--bad)">This browser cannot make direct connections, so online play is not available here.</p>'; return; }
+  if (!NET || NET.status === 'off') {
+    box.innerHTML = `<div class="net-row"><button type="button" class="tt-btn" data-net="host">Host a room</button><span class="net-or">or</span>
+      <input type="text" id="netCode" maxlength="4" placeholder="CODE" aria-label="Room code" value="${netEsc((NET && NET.code) || '')}" autocomplete="off" spellcheck="false">
+      <button type="button" class="tt-btn" data-net="join">Join</button></div>
+      ${NET && NET.err ? `<p class="tt-hint" style="color:var(--bad)">${NET.err}</p>` : ''}`;
+    return;
+  }
+  if (NET.status === 'wait') {
+    box.innerHTML = `<div class="net-row"><span>${NET.host ? 'Opening a room…' : `Joining room <b>${netEsc(NET.code)}</b>…`}</span><button type="button" class="tt-btn" data-net="leave">Cancel</button></div>`;
+    return;
+  }
+  const others = Object.values(NET.peers);
+  const row = (name, P, you) => {
+    const where = P ? (netNow() - P.last < 2 && CARS[P.car] ? `${carLabel(P.car)} · ${netMapName(P.map)}` : 'in the garage') : '';
+    return `<li><b>${netEsc(name)}</b>${you ? ' (you)' : ''}${where ? ` <span>${netEsc(where)}</span>` : ''}</li>`;
+  };
+  const me = row(netName(), null, true);
+  const list = (NET.host ? [me] : [row((NET.peers.h || {}).name || 'Host', NET.peers.h), me]).concat(others.filter(P => P.id !== 'h').map(P => row(P.name, P))).join('');
+  box.innerHTML = `<div class="net-room"><div class="net-row"><span>Room code <b class="net-code">${netEsc(NET.code)}</b></span><button type="button" class="tt-btn" data-net="leave">Leave</button></div>
+    <p class="tt-hint">${NET.host ? `Give your friends this code. You pick the track, weather and time for everyone. ${others.length ? '' : 'Nobody has joined yet.'}`
+      : `The host picks the track: <b>${netEsc(netMapName(TT_MAP))}</b>${TT_RAIN ? ', rain' : ''}, ${netEsc(TT_TIME)}.`} Pick a car below to drive.</p>
+    <ul class="net-list">${list}</ul></div>`;
+}
+$('netBox').addEventListener('click', e => {
+  const b = e.target.closest('[data-net]');
+  if (!b) return;
+  if (b.dataset.net === 'host') netHost();
+  else if (b.dataset.net === 'join') netJoin($('netCode').value);
+  else if (b.dataset.net === 'leave') netLeave();
+});
+$('netBox').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'netCode') netJoin(e.target.value); });
+$('netName').value = SETTINGS.driverName || '';
+$('netName').addEventListener('input', e => {
+  SETTINGS.driverName = e.target.value.trim().slice(0, 24); saveSettings(); $('drvName').value = SETTINGS.driverName;
+  if (netOn()) { if (NET.host) netAll('ctl', {k: 'name', id: 'h', name: netName()}); else for (const L of Object.values(NET.links)) netSendTo(L, 'ctl', {k: 'name', name: netName()}); }
+});
+setInterval(() => { if (netOn() && !$('garage').hidden) renderNet(); }, 2000);   // keep "in the garage / driving" fresh
+window.addEventListener('beforeunload', () => netLeave(true));
+renderNet();
 /* ---------- Gino's Pizza: delivery runs, the first paid work in the career ---------- */
 // Bill's old friend Gino runs a pizza place on the winding country road (the circuit). Each job starts outside the shop with the engine off.
 // Drive round the circuit to each house, stop in the yellow box out front, and hold still a moment to hand over the order.
@@ -14363,7 +14699,7 @@ for (const [id, car] of Object.entries(CARS)) {
 }
 document.querySelectorAll('[data-car]').forEach(b => b.addEventListener('click', () => {
   GHOST_RACE = TT_MODE === 'ghost' && !!GHOST;   // in ghost mode, a car from the list races the loaded ghost
-  EVT = GHOST_RACE || ttRunOn() ? -1 : null; chooseCar(b.dataset.car);
+  EVT = GHOST_RACE || (ttRunOn() && TT_MODE !== 'online') ? -1 : null; chooseCar(b.dataset.car);   // (online is a free drive)
 }));
 buildModLists();
 applyCarDefaults('pickup');
